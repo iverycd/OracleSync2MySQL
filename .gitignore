@@ -1,0 +1,9 @@
+/dbcfg.yml
+.idea
+mysqlDataSyncTool.exe
+/2023_*/*.log
+linux_*
+win_*
+/log/*
+release
+*.tar.gz

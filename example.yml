@@ -1,0 +1,20 @@
+src:
+  host: 192.168.1.200
+  port: 1521
+  database: orcl
+  username: admin
+  password: oracle
+dest:
+  host: 192.168.1.37
+  port: 3306
+  database: test_polar
+  username: root
+  password: 11111
+pageSize: 100000
+maxParallel: 100
+batchRowSize: 1000
+tables:
+  test:
+    - select * from test
+exclude:
+  operationlog
