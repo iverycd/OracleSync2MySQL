@@ -152,7 +152,7 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 	if _, err = destDb.Exec(dropDestTbl); err != nil {
 		log.Error("drop table ", tblName, " failed ", err)
 	}
-	// 创建PostgreSQL表结构
+	// 创建表结构
 	log.Info(fmt.Sprintf("%v Table total %s create table %s", time.Now().Format("2006-01-02 15:04:05.000000"), strconv.Itoa(tableCount), tblName))
 	if _, err = destDb.Exec(createTblSql); err != nil {
 		log.Error("table ", tblName, " create failed  ", err)

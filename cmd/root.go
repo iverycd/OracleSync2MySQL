@@ -340,7 +340,14 @@ func prepareSqlStr(tableName string, pageSize int) (sqlList []string) {
 	}
 	// 以下生成分页查询语句
 	for i := 0; i < totalPageNum; i++ { // 使用小于等于，包含没有行数据的表
-		sqlStr = fmt.Sprintf("SELECT %s FROM (SELECT A.*, ROWNUM RN FROM (SELECT * FROM \"%s\") A WHERE ROWNUM <= %s) WHERE RN >=%s", colNameFull, tableName, strconv.Itoa(pageSize), strconv.Itoa(i*pageSize))
+		curStartPage := i + 1
+		//startnum, endnum = page_set(cur_start_page, pageSize)
+		startNum := curStartPage * pageSize
+		if curStartPage > 0 {
+			startNum = ((curStartPage - 1) * pageSize) + 1
+		}
+		endNum := startNum + pageSize - 1
+		sqlStr = fmt.Sprintf("SELECT %s FROM (SELECT A.*, ROWNUM RN FROM (SELECT * FROM \"%s\") A WHERE ROWNUM <= %s) WHERE RN >=%s", colNameFull, tableName, strconv.Itoa(endNum), strconv.Itoa(startNum))
 		sqlList = append(sqlList, sqlStr)
 	}
 	return sqlList
@@ -397,11 +404,28 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 			} else {
 				if colType[i] == "BLOB" { //大字段类型就无需使用string函数转为字符串类型，即使用sql.RawBytes类型
 					value = colValue
-				} else if colType[i] == "DATE" { //以下将oralce时间数据(2023-07-26T15:22:52Z)转为传统形式的时间类型(2023-07-26 15:22:52)
-					timeLayout := "2006-01-02T15:04:05Z"                                  //转化所需模板
-					loc, _ := time.LoadLocation("Local")                                  //重要：获取时区
-					theTime, _ := time.ParseInLocation(timeLayout, string(colValue), loc) //使用模板在对应时区转化为time.time类型
-					value = theTime.Format("2006-01-02 15:04:05")                         //格式化，否则时差相差8小时
+				} else if colType[i] == "DATE" {
+					timeValue, err := time.Parse(time.RFC3339, string(colValue)) // RFC3339= "2006-01-02T15:04:05Z07:00",先把列值转为标准的时间格式
+					if err != nil {
+						fmt.Println("convert date type error :", err)
+						return
+					}
+					timeLayout := "2006-01-02 15:04:05" //date类型转化所需模板
+					//timeLayout := "2006-01-02T15:04:05Z"                                  //转化所需模板(不使用time.Parse的时候)
+					loc, _ := time.LoadLocation("Local") //重要：获取时区
+					//theTime, _ := time.ParseInLocation(timeLayout, string(colValue), loc) //使用模板在对应时区转化为time.time类型
+					theTime, _ := time.ParseInLocation(timeLayout, timeValue.Format("2006-01-02 15:04:05"), loc) //使用模板在对应时区转化为time.time类型
+					value = theTime.Format("2006-01-02 15:04:05")                                                //格式化，否则时差相差8小时
+				} else if colType[i] == "TIMESTAMPDTY" {
+					timeValue, err := time.Parse(time.RFC3339, string(colValue)) // RFC3339= "2006-01-02T15:04:05Z07:00",先把列值转为标准的时间格式
+					if err != nil {
+						fmt.Println("convert timestamp error:", err)
+						return
+					}
+					timeLayout := "2006-01-02 15:04:05.000000 +0000 UTC"                                                          //timestamp类型转化所需模板
+					loc, _ := time.LoadLocation("Local")                                                                          //重要：获取时区
+					theTime, _ := time.ParseInLocation(timeLayout, timeValue.Format("2006-01-02 15:04:05.000000 +0000 UTC"), loc) //使用模板在对应时区转化为time.time类型
+					value = theTime.Format("2006-01-02 15:04:05.000000")                                                          //格式化，否则时差相差8小时
 				} else {
 					value = string(colValue) //非大字段类型,显式使用string函数强制转换为字符串文本，否则都是字节类型文本(即sql.RawBytes)
 				}
