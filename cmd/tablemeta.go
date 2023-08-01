@@ -69,7 +69,7 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 			log.Error(err)
 		}
 		// 判断下默认值是否是null，go语言中不能直接把null值转成字符串
-		if colDefaultValue.Valid {
+		if !colDefaultValue.Valid {
 			newTable.columnDefault = colDefaultValue.String
 		} else {
 			newTable.columnDefault = "null"

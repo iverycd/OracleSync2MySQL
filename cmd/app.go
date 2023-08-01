@@ -6,15 +6,20 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/godror/godror"
 	"github.com/spf13/viper"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
+	//_ "github.com/sijms/go-ora/v2"
+	_ "github.com/godror/godror"
 )
 
 var srcDb *sql.DB
 var destDb *sql.DB
+var oracleConnStr godror.ConnectionParams
 
 func getConn() (connStr *connect.DbConnStr) {
 	connStr = new(connect.DbConnStr)
@@ -38,9 +43,16 @@ func PrepareSrc(connStr *connect.DbConnStr) {
 	srcPassword := connStr.SrcPassword
 	srcDatabase := connStr.SrcDatabase
 	srcPort := connStr.SrcPort
-	srcConn := fmt.Sprintf("oracle://%s:%s@%s:%d/%s?LOB FETCH=POST", srcUserName, srcPassword, srcHost, srcPort, srcDatabase)
+	//srcConn := fmt.Sprintf("oracle://%s:%s@%s:%d/%s?LOB FETCH=POST", srcUserName, srcPassword, srcHost, srcPort, srcDatabase)
+	//fmt.Println(srcConn)
 	var err error
-	srcDb, err = sql.Open("oracle", srcConn)
+	//srcDb, err = sql.Open("oracle", srcConn)  //go-ora
+	//srcDb, err = sql.Open("godror", `user="one" password="oracle" connectString="192.168.189.200:1521/orcl" libDir="/Users/kay/Documents/database/oracle/instantclient_19_8_mac"`)//直接连接方式
+	oracleConnStr.LibDir = "/Users/kay/Documents/database/oracle/instantclient_19_8_mac"
+	oracleConnStr.Username = srcUserName
+	oracleConnStr.Password = godror.NewPassword(srcPassword)
+	oracleConnStr.ConnectString = fmt.Sprintf("%s:%s/%s", srcHost, strconv.Itoa(srcPort), srcDatabase)
+	srcDb = sql.OpenDB(godror.NewConnector(oracleConnStr))
 	if err != nil {
 		log.Fatal("please check SourceDB yml file", err)
 	}
@@ -50,7 +62,7 @@ func PrepareSrc(connStr *connect.DbConnStr) {
 	}
 	srcDb.SetConnMaxLifetime(2 * time.Hour) // 一个连接被使用的最长时间，过一段时间之后会被强制回收
 	srcDb.SetMaxIdleConns(0)                // 最大空闲连接数，0为不限制
-	srcDb.SetMaxOpenConns(60)               // 设置连接池最大连接数
+	srcDb.SetMaxOpenConns(0)                // 设置连接池最大连接数
 	log.Info("connect Source ", srcHost, " success")
 }
 
@@ -73,7 +85,7 @@ func PrepareDest(connStr *connect.DbConnStr) {
 	}
 	destDb.SetConnMaxLifetime(2 * time.Hour) // 一个连接被使用的最长时间，过一段时间之后会被强制回收
 	destDb.SetMaxIdleConns(0)                // 最大空闲连接数，0为不限制
-	destDb.SetMaxOpenConns(30)               // 设置连接池最大连接数
+	destDb.SetMaxOpenConns(0)                // 设置连接池最大连接数
 	log.Info("connect MySQL ", destHost, " success")
 }
 
@@ -197,9 +209,15 @@ func CreateDateDir(basePath string) string {
 	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
 		// 必须分成两步
 		// 先创建文件夹
-		os.Mkdir(folderPath, 0777)
+		err := os.MkdirAll(folderPath, 0777) //级联创建目录
+		if err != nil {
+			fmt.Println("create directory log failed ", err)
+		}
 		// 再修改权限
-		os.Chmod(folderPath, 0777)
+		err = os.Chmod(folderPath, 0777)
+		if err != nil {
+			fmt.Println("chmod directory log failed ", err)
+		}
 	}
 	return folderPath
 }

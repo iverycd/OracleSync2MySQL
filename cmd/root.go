@@ -20,9 +20,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"OracleSync2MySQL/connect"
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/liushuochen/gotable"
-	_ "github.com/sijms/go-ora/v2"
 	"github.com/spf13/viper"
 )
 
@@ -128,7 +126,7 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	// 每个goroutine运行开始以及结束之后使用的通道，主要用于控制内层的goroutine任务与外层main线程的同步，即主线程需要等待子任务完成
 	// ch := make(chan int, goroutineSize)  //v0.1.4及之前的版本通道使用的通道，配合下面for循环遍历行数据迁移失败的计数
 	// 在协程里运行函数response，主要是从下面调用协程go runMigration的时候获取到里面迁移行数据失败的数量
-	go response()
+	//go response()
 	//遍历tableMap，先遍历表，再遍历该表的sql切片集合
 	migDataStart := time.Now()
 	for tableName, sqlFullSplit := range tableMap { //获取单个表名
@@ -136,6 +134,7 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 		if !tableNotExist {                                                    //目标表存在就执行数据迁移
 			// 遍历该表的sql切片(多个分页查询或者全表查询sql)
 			for index, sqlSplitSql := range sqlFullSplit {
+				log.Info("Table ", tableName, " total task ", len(sqlFullSplit))
 				ch <- struct{}{} //在没有被接收的情况下，至多发送n个消息到通道则被阻塞，若缓存区满，则阻塞，这里相当于占位置排队
 				wg.Add(1)        // 每运行一个goroutine等待组加1
 				go runMigration(logDir, index, tableName, sqlSplitSql, ch, colName, colType)
@@ -187,7 +186,7 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 		fmt.Println("Create tblConfig failed: ", err.Error())
 		return
 	}
-	ymlConfig := []string{connStr.SrcHost + "-" + connStr.SrcDatabase, connStr.DestHost + "-" + connStr.DestDatabase, strconv.Itoa(maxParallel), strconv.Itoa(pageSize), strconv.Itoa(len(excludeTab))}
+	ymlConfig := []string{connStr.SrcHost + "-" + connStr.SrcUserName, connStr.DestHost + "-" + connStr.DestDatabase, strconv.Itoa(maxParallel), strconv.Itoa(pageSize), strconv.Itoa(len(excludeTab))}
 	tblConfig.AddRow(ymlConfig)
 	fmt.Println(tblConfig)
 	// 输出迁移摘要
@@ -386,7 +385,7 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 	var insertSql string
 	// 批量插入批次大小行数,MySQL限制insert语句最多使用65535个占位符，下面计算挑选出最小值(自动计算的结果与yml配置文件设定值)，防止自己设定的批量batchRowSize超过限制
 	batchRowSize := int(math.Min(float64(65535/len(columns)-10), float64(viper.GetInt("batchRowSize"))))
-	fmt.Println("batchRowSize:", batchRowSize)
+	//fmt.Println("batchRowSize:", batchRowSize)
 	txn, err := destDb.Begin() //开始一个事务
 	if err != nil {
 		log.Error(err)
@@ -444,7 +443,7 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 				if err != nil {
 					log.Error("txn.Prepare(insertSql) failed table[", tableName, "] ", err)
 					LogError(logDir, "errorTableData ", tableName, err)
-					responseChannel <- fmt.Sprintf("data error %s", tableName)
+					//responseChannel <- fmt.Sprintf("data error %s", tableName)
 					<-ch // 通道向外发送数据
 					return
 				}
@@ -453,18 +452,20 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 				if err != nil {
 					log.Error(tableName, " stmt.Exec(totalPrepareValues...) Failed: ", err) //注意这里不能使用Fatal，否则会直接退出程序，也就没法遇到错误继续了
 					LogError(logDir, "errorTableData ", tableName, err)
+					<-ch // 通道向外发送数据
+					return
 				}
 				err = stmt.Close() //关闭stmt
 				if err != nil {
 					log.Error(err)
 				}
-				log.Info("insert ", tableName, " ", totalRow, " rows")
+				log.Info(time.Now(), " ID[", startPage, "] insert ", tableName, " ", totalRow, " rows")
 				totalPrepareValues = nil
 				totalInsertCol = ""
 			}
 		}
 	}
-	err = txn.Commit() // 提交事务，这里注意Commit在上面Close之后
+	err = txn.Commit() // 提交事务
 	if err != nil {
 		err := txn.Rollback()
 		if err != nil {
@@ -484,7 +485,7 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 		if err != nil {
 			log.Error("txn.Prepare(insertSql) failed table[", tableName, "] ", err)
 			LogError(logDir, "errorTableData ", tableName, err)
-			responseChannel <- fmt.Sprintf("data error %s", tableName)
+			//responseChannel <- fmt.Sprintf("data error %s", tableName)
 			<-ch // 通道向外发送数据
 			return
 		}
@@ -493,145 +494,32 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 		if err != nil {
 			log.Error(tableName, " last part stmt.Exec(totalPrepareValues...) Failed: ", err) //注意这里不能使用Fatal，否则会直接退出程序，也就没法遇到错误继续了
 			LogError(logDir, "errorTableData ", tableName, err)
+			<-ch // 通道向外发送数据
+			return
 		}
 		err = stmt.Close() //关闭stmt
 		if err != nil {
 			log.Error(err)
 		}
-		err = txn.Commit() // 提交事务，这里注意Commit在上面Close之后
-		if err != nil {
-			err := txn.Rollback()
-			if err != nil {
-				return
-			}
-			log.Error("Commit failed ", err)
-		}
+		//err = txn.Commit() // 提交事务，这里注意Commit在上面Close之后
+		//if err != nil {
+		//	err := txn.Rollback()
+		//	if err != nil {
+		//		log.Error("rollback failed ", err)
+		//	}
+		//	log.Error("Commit failed ", err)
+		//}
+		log.Info(time.Now().Format("2006-01-02 15:04:05.000"), " ID[", startPage, "] insert ", tableName, " ", totalRow, " rows")
 	}
 	cost := time.Since(start) //计算时间差
 	log.Info(fmt.Sprintf("%v Taskid[%d] table %v complete,processed %d rows,execTime %s", time.Now().Format("2006-01-02 15:04:05.000000"), startPage, tableName, totalRow, cost))
+	// 剩下显式的提交一下，不然目标库会有很多sleep的线程导致超出最大连接数
+	err = txn.Commit() // 提交事务，这里注意Commit在上面Close之后
+	if err != nil {
+		log.Error("Commit failed ", err)
+	}
 	<-ch // 通道向外发送数据
 }
-
-// 不使用占位符,目前测下来，在大数据量下效率较低,另外如果遇到blob类型，还需要把大字段列值转为十六进制字符串
-//func runMigration(logDir string, startPage int, tableName string, sqlStr string, ch chan struct{}, columns []string, colType []string) {
-//	defer wg.Done()
-//	log.Info(fmt.Sprintf("%v Taskid[%d] Processing TableData %v", time.Now().Format("2006-01-02 15:04:05.000000"), startPage, tableName))
-//	start := time.Now()
-//	// 直接查询,即查询全表或者分页查询(SELECT t.* FROM (SELECT id FROM test  ORDER BY id LIMIT ?, ?) temp LEFT JOIN test t ON temp.id = t.id;)
-//	sqlStr = "/* goapp */" + sqlStr
-//	// 查询源库的sql
-//	rows, err := srcDb.Query(sqlStr) //传入参数之后执行
-//	defer rows.Close()
-//	if err != nil {
-//		log.Error(fmt.Sprintf("[exec  %v failed ] ", sqlStr), err)
-//		return
-//	}
-//	values := make([]sql.RawBytes, len(columns)) // 列的值切片,包含多个列,即单行数据的值
-//	scanArgs := make([]interface{}, len(values)) // 用来做scan的参数，将上面的列值value保存到scan
-//	for i := range values {                      // 这里也是取决于有几列，就循环多少次
-//		scanArgs[i] = &values[i] // 这里scanArgs是指向列值的指针,scanArgs里每个元素存放的都是地址
-//	}
-//	var totalRow int            // 表总行数
-//	var insertValue string      // 单行insert的value值
-//	var totalInsertValue string // 多行insert的value值
-//	// 批量插入批次大小行数
-//	batchRowSize := viper.GetInt("batchRowSize")
-//	fmt.Println("batchRowSize:", batchRowSize)
-//	tx, err := destDb.Begin()
-//	if err != nil {
-//		log.Error(err)
-//	}
-//	for rows.Next() { // 从查询结果获取一行行数据
-//		totalRow++                   // 源表行数+1
-//		err = rows.Scan(scanArgs...) //scanArgs切片里的元素是指向values的指针，通过rows.Scan方法将获取游标结果集的各个列值复制到变量scanArgs各个切片元素(指针)指向的对象即values切片里，这里是一行完整的值
-//		if err != nil {
-//			log.Error("ScanArgs Failed ", err.Error())
-//		}
-//		// 以下for将单行每个列值byte数据循环转换成string类型(blob类型使用go转成十六进制字符串，剩余非大字段类型获取的值再使用string函数转为字符串)
-//		for i, colValue := range values { //values是完整的一行所有列值，这里从values遍历，获取每一列的值并赋值到colValue变量，colValue是单列的列值
-//			if i == 0 { // 第一列用左括号把值包起来，('aa',
-//				if colType[i] == "BLOB" { // 下面将blob数据转成0x开头的十六进制字符串
-//					insertValue = "(" + "0x" + hex.EncodeToString(colValue) + ","
-//				} else {
-//					insertValue = "('" + string(colValue) + "',"
-//				}
-//			}
-//			if i > 0 && i < len(values) { // 剩下列用逗号隔开并拼接成一行value值
-//				if colType[i] == "BLOB" {
-//					insertValue = insertValue + "0x" + hex.EncodeToString(colValue) + ","
-//				} else {
-//					insertValue = insertValue + "'" + string(colValue) + "',"
-//				}
-//			}
-//		}
-//		insertValue = strings.TrimRight(insertValue, ",")        // 单行列值如('1','tom' -注意这里没有结尾的括号，并且通过函数去掉了结尾的逗号
-//		totalInsertValue = totalInsertValue + insertValue + ")," // 多行数据拼接成的value值，如('1','aa'),('2','aaa'), -注意这里有结尾的逗号
-//		// 每隔一定行数，批量插入一次,100或者1000行插入一波值并提交，现在测试下来批量插入1000行效率最高,使用事务会比直接插入效率高
-//		if totalRow%batchRowSize == 0 {
-//			totalInsertValue = strings.TrimRight(totalInsertValue, ",") // 多行数据value值，去掉最后括号的逗号，如('1','aa'),('2','aaa')
-//			if len(values) != 0 {                                       // 排除掉多线程遇到空切片的数据
-//				//dataPara := totalInsertValue //"('1', '值2'),('2', '值2')" 插入数据
-//				sqlStatement := "INSERT INTO " + tableName + " VALUES " + totalInsertValue
-//				stmt, err := tx.Prepare(sqlStatement)
-//				if err != nil {
-//					log.Error(err)
-//					LogError(logDir, "errorTableData", tableName, err)
-//					// 通过外部的全局变量通道获取到迁移行数据失败的计数
-//					responseChannel <- fmt.Sprintf("data error %s", tableName)
-//					<-ch   // 通道向外发送数据
-//					return // 如果prepare异常就return
-//				}
-//				_, err = stmt.Exec() // 上面Prepare方法没有使用占位符直接传的数据，所以这里空参数即可
-//				if err != nil {
-//					// 回滚事务
-//					tx.Rollback()
-//					log.Error(err)
-//				}
-//				log.Info("insert ", tableName, " ", totalRow, " rows")
-//				totalInsertValue = ""
-//			}
-//		}
-//	}
-//	// 提交前面的事务
-//	err = tx.Commit()
-//	if err != nil {
-//		log.Error(err)
-//	}
-//	// 剩余的数据即row.Next末尾的数据，另外开一个事务
-//	tx, err = destDb.Begin()
-//	if err != nil {
-//		log.Error(err)
-//	}
-//	totalInsertValue = strings.TrimRight(totalInsertValue, ",") // 去掉占位符最后括号的逗号
-//	if len(values) != 0 {                                       // 排除掉多线程遇到空切片的数据
-//		sqlStatement := "INSERT INTO " + tableName + " VALUES " + totalInsertValue
-//		stmt, err := tx.Prepare(sqlStatement)
-//		if err != nil {
-//			log.Error(err)
-//			LogError(logDir, "errorTableData", tableName, err)
-//			// 通过外部的全局变量通道获取到迁移行数据失败的计数
-//			responseChannel <- fmt.Sprintf("data error %s", tableName)
-//			<-ch   // 通道向外发送数据
-//			return // 如果prepare异常就return
-//		}
-//		_, err = stmt.Exec() // 上面Prepare方法没有使用占位符直接传的数据，所以这里空参数即可
-//		if err != nil {
-//			// 回滚事务
-//			tx.Rollback()
-//			log.Error(err)
-//		}
-//		// 提交事务
-//		err = tx.Commit()
-//		if err != nil {
-//			log.Error(err)
-//		}
-//		log.Info("insert ", tableName, " ", totalRow, " rows")
-//		totalInsertValue = ""
-//	}
-//	cost := time.Since(start) //计算时间差
-//	log.Info(fmt.Sprintf("%v Taskid[%d] table %v complete,processed %d rows,execTime %s", time.Now().Format("2006-01-02 15:04:05.000000"), startPage, tableName, totalRow, cost))
-//	<-ch // 通道向外发送数据
-//}
 
 func Execute() { // init 函数初始化之后再运行此Execute函数
 	if err := rootCmd.Execute(); err != nil {

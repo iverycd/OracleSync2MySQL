@@ -7,3 +7,4 @@ win_*
 /log/*
 release
 *.tar.gz
+proxy.txt
