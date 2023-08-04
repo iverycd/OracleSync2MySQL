@@ -8,3 +8,4 @@ win_*
 release
 *.tar.gz
 proxy.txt
+compare.sh

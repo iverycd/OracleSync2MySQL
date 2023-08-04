@@ -8,12 +8,10 @@ import (
 	"io"
 	"math"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -30,7 +28,7 @@ var selFromYml bool
 
 var wg sync.WaitGroup
 var wg2 sync.WaitGroup
-var responseChannel = make(chan string, 1) // 设定为全局变量，用于在goroutine协程里接收copy行数据失败的计数
+
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "OracleSync2MySQL",
@@ -43,22 +41,7 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-// 表行数据迁移失败的计数
-var errDataCount int
-
-// 处理全局变量通道，responseChannel，在协程的这个通道里遍历获取到copy方法失败的计数
-func response() {
-	for rc := range responseChannel {
-		fmt.Println("response:", rc)
-		errDataCount += 1
-	}
-}
-
 func startDataTransfer(connStr *connect.DbConnStr) {
-	// 自动侦测终端是否输入Ctrl+c,若按下,主动关闭数据库查询
-	exitChan := make(chan os.Signal)
-	signal.Notify(exitChan, os.Interrupt, os.Kill, syscall.SIGTERM)
-	go exitHandle(exitChan)
 	// 创建运行日志目录
 	logDir, _ := filepath.Abs(CreateDateDir(""))
 	// 输出调用文件以及方法位置
@@ -69,7 +52,7 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
-			log.Fatal(err) // 或设置到函数返回值中
+			log.Fatal(err)
 		}
 	}()
 	// log信息重定向到平面文件
@@ -158,26 +141,41 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	//		migDataFailed += 1
 	//	}
 	//}
-	tableDataRet := []string{"TableData", migDataStart.Format("2006-01-02 15:04:05.000000"), migDataEnd.Format("2006-01-02 15:04:05.000000"), strconv.Itoa(errDataCount), migCost.String()}
+	tableDataRet := []string{"TableData", migDataStart.Format("2006-01-02 15:04:05.000000"), migDataEnd.Format("2006-01-02 15:04:05.000000"), " - ", migCost.String()}
 	// 数据库对象的迁移结果
 	var rowsAll = [][]string{{}}
 	// 表结构创建以及数据迁移结果追加到切片,进行整合
 	rowsAll = append(rowsAll, tabRet, tableDataRet)
 	// 如果指定-s模式不创建下面对象
-	//if selFromYml != true {
-	//	// 创建序列
-	//	seqRet := db.SeqCreate(logDir)
-	//	// 创建索引、约束
-	//	idxRet := db.IdxCreate(logDir)
-	//	// 创建外键
-	//	fkRet := db.FKCreate(logDir)
-	//	// 创建视图
-	//	viewRet := db.ViewCreate(logDir)
-	//	// 创建触发器
-	//	triRet := db.TriggerCreate(logDir)
-	//	// 以上对象迁移结果追加到切片,进行整合
-	//	rowsAll = append(rowsAll, seqRet, idxRet, fkRet, viewRet, triRet)
-	//}
+	if selFromYml != true {
+		//	// 创建序列
+		//	seqRet := db.SeqCreate(logDir)
+		// 创建索引、约束
+		ch := make(chan struct{}, maxParallel)
+		id := 0
+		failedCount = 0
+		var idxRet []string
+		startTime := time.Now()
+		for tableName := range tableMap { //获取单个表名
+			id += 1
+			ch <- struct{}{}
+			wg2.Add(1)
+			go db.IdxCreate(logDir, tableName, ch, id)
+		}
+		wg2.Wait()
+		endTime := time.Now()
+		cost := time.Since(startTime)
+		idxRet = append(idxRet, "Index", startTime.Format("2006-01-02 15:04:05.000000"), endTime.Format("2006-01-02 15:04:05.000000"), strconv.Itoa(failedCount), cost.String())
+		//	// 创建外键
+		//	fkRet := db.FKCreate(logDir)
+		//	// 创建视图
+		//	viewRet := db.ViewCreate(logDir)
+		//	// 创建触发器
+		//	triRet := db.TriggerCreate(logDir)
+		// 以上对象迁移结果追加到切片,进行整合
+		rowsAll = append(rowsAll, idxRet)
+		//rowsAll = append(rowsAll, seqRet, idxRet, fkRet, viewRet, triRet)
+	}
 	// 输出配置文件信息
 	fmt.Println("------------------------------------------------------------------------------------------------------------------------------")
 	Info()
@@ -260,6 +258,9 @@ func fetchTableMap(pageSize int, excludeTable []string) (tableMap map[string][]s
 			// !tableOnly即没有指定-t选项，生成全库的分页查询语句，否则就是指定了-t选项,sqlFullList仅追加空字符串
 			if !tableOnly {
 				sqlFullList = prepareSqlStr(tableName, pageSize)
+				if len(sqlFullList) == 0 { // 如果表没有数据，手动append一条1=0的sql语句,否则该表不会被创建，compareDb运行也会不准确
+					sqlFullList = append(sqlFullList, fmt.Sprintf("select * from \"%s\" where 1=0", tableName))
+				}
 			} else {
 				sqlFullList = append(sqlFullList, "")
 			}
@@ -338,9 +339,9 @@ func prepareSqlStr(tableName string, pageSize int) (sqlList []string) {
 		return
 	}
 	// 以下生成分页查询语句
-	for i := 0; i < totalPageNum; i++ { // 使用小于等于，包含没有行数据的表
+	for i := 0; i < totalPageNum; i++ { // 使用小于而不是小于等于，否则会多生成一条分页查询边界外的sql，即此sql查询源表没有数据，也会导致后面迁移数据有多个无用的goroutine
 		curStartPage := i + 1
-		//startnum, endnum = page_set(cur_start_page, pageSize)
+		//以下计算分页查询起始的页数
 		startNum := curStartPage * pageSize
 		if curStartPage > 0 {
 			startNum = ((curStartPage - 1) * pageSize) + 1
@@ -355,7 +356,7 @@ func prepareSqlStr(tableName string, pageSize int) (sqlList []string) {
 // 使用占位符,目前测下来，在大数据量下相比较不使用占位符的方式，效率较高，遇到blob类型可直接使用go的byte类型数据
 func runMigration(logDir string, startPage int, tableName string, sqlStr string, ch chan struct{}, columns []string, colType []string) {
 	defer wg.Done()
-	log.Info(fmt.Sprintf("%v Taskid[%d] Processing TableData %v", time.Now().Format("2006-01-02 15:04:05.000000"), startPage, tableName))
+	log.Info(fmt.Sprintf("%v Taskid[%d] Processing TableData %v ", time.Now().Format("2006-01-02 15:04:05.000000"), startPage, tableName))
 	start := time.Now()
 	// 直接查询,即查询全表或者分页查询(SELECT t.* FROM (SELECT id FROM test  ORDER BY id LIMIT ?, ?) temp LEFT JOIN test t ON temp.id = t.id;)
 	sqlStr = "/* goapp */" + sqlStr
@@ -366,11 +367,11 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 		log.Error(fmt.Sprintf("[exec  %v failed ] ", sqlStr), err)
 		return
 	}
-	values := make([]sql.RawBytes, len(columns)) // 列的值切片,包含多个列,即单行数据的值
-	scanArgs := make([]interface{}, len(values)) // 用来做scan的参数，将上面的列值value保存到scan
-	for i := range values {                      // 这里也是取决于有几列，就循环多少次
-		scanArgs[i] = &values[i] // 这里scanArgs是指向列值的指针,scanArgs里每个元素存放的都是地址
-	}
+	//values := make([]sql.RawBytes, len(columns)) // 列的值切片,包含多个列,即单行数据的值
+	//scanArgs := make([]interface{}, len(values)) // 用来做scan的参数，将上面的列值value保存到scan
+	//for i := range values {                      // 这里也是取决于有几列，就循环多少次
+	//	scanArgs[i] = &values[i] // 这里scanArgs是指向列值的指针,scanArgs里每个元素存放的都是地址
+	//}
 	// 生成单行数据的占位符，如(?,?),表有几列就有几个问号
 	singleRowCol := fmt.Sprintf("(%s)", strings.Join(strings.Split(strings.Repeat("?", len(columns)), ""), ","))
 	// 批量插入时values后面总的占位符，批量有多少行数据，就有多少个(?,?)，例如(?,?),(?,?)
@@ -391,6 +392,11 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 		log.Error(err)
 	}
 	for rows.Next() { // 从查询结果获取一行行数据
+		values := make([]sql.RawBytes, len(columns)) // 列的值切片,包含多个列,即单行数据的值
+		scanArgs := make([]interface{}, len(values)) // 用来做scan的参数，将上面的列值value保存到scan
+		for i := range values {                      // 这里也是取决于有几列，就循环多少次
+			scanArgs[i] = &values[i] // 这里scanArgs是指向列值的指针,scanArgs里每个元素存放的都是地址
+		}
 		totalRow++                   // 源表行数+1
 		err = rows.Scan(scanArgs...) //scanArgs切片里的元素是指向values的指针，通过rows.Scan方法将获取游标结果集的各个列值复制到变量scanArgs各个切片元素(指针)指向的对象即values切片里，这里是一行完整的值
 		if err != nil {
@@ -452,6 +458,10 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 				if err != nil {
 					log.Error(tableName, " stmt.Exec(totalPrepareValues...) Failed: ", err) //注意这里不能使用Fatal，否则会直接退出程序，也就没法遇到错误继续了
 					LogError(logDir, "errorTableData ", tableName, err)
+					err := txn.Rollback()
+					if err != nil {
+						log.Error(tableName, " Rollback failed table ", err)
+					}
 					<-ch // 通道向外发送数据
 					return
 				}
@@ -494,6 +504,10 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 		if err != nil {
 			log.Error(tableName, " last part stmt.Exec(totalPrepareValues...) Failed: ", err) //注意这里不能使用Fatal，否则会直接退出程序，也就没法遇到错误继续了
 			LogError(logDir, "errorTableData ", tableName, err)
+			err := txn.Rollback()
+			if err != nil {
+				log.Error(tableName, " Rollback last part failed table ", err)
+			}
 			<-ch // 通道向外发送数据
 			return
 		}

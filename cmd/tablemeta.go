@@ -16,6 +16,7 @@ var failedCount int
 type Database interface {
 	// TableCreate (logDir string, tableMap map[string][]string) (result []string) 单线程
 	TableCreate(logDir string, tblName string, ch chan struct{})
+	IdxCreate(logDir string, tableName string, ch chan struct{}, id int)
 }
 
 type Table struct {
@@ -57,9 +58,9 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 		log.Error(err)
 	}
 	// 查询源库表结构
-	sql := fmt.Sprintf("SELECT A.COLUMN_NAME,A.DATA_TYPE,A.CHAR_LENGTH,case when A.NULLABLE ='Y' THEN 'YES' ELSE 'NO' END as isnull,A.DATA_DEFAULT,case when A.DATA_PRECISION is null then -1 else  A.DATA_PRECISION end DATA_PRECISION,case when A.DATA_SCALE is null then -1 when A.DATA_SCALE >30 then least(A.DATA_PRECISION,30)-1 else  A.DATA_SCALE end DATA_SCALE, nvl(B.COMMENTS,'null') COMMENTS,case when a.AVG_COL_LEN is null then -1 else a.AVG_COL_LEN end AVG_COL_LEN,COLUMN_ID FROM USER_TAB_COLUMNS A LEFT JOIN USER_COL_COMMENTS B ON A.TABLE_NAME=B.TABLE_NAME AND A.COLUMN_NAME=B.COLUMN_NAME WHERE A.TABLE_NAME='%s' ORDER BY COLUMN_ID", tblName)
-	//fmt.Println(sql)
-	rows, err := srcDb.Query(sql)
+	sqlStr := fmt.Sprintf("SELECT A.COLUMN_NAME,A.DATA_TYPE,A.CHAR_LENGTH,case when A.NULLABLE ='Y' THEN 'YES' ELSE 'NO' END as isnull,A.DATA_DEFAULT,case when A.DATA_PRECISION is null then -1 else  A.DATA_PRECISION end DATA_PRECISION,case when A.DATA_SCALE is null then -1 when A.DATA_SCALE >30 then least(A.DATA_PRECISION,30)-1 else  A.DATA_SCALE end DATA_SCALE, nvl(B.COMMENTS,'null') COMMENTS,case when a.AVG_COL_LEN is null then -1 else a.AVG_COL_LEN end AVG_COL_LEN,COLUMN_ID FROM USER_TAB_COLUMNS A LEFT JOIN USER_COL_COMMENTS B ON A.TABLE_NAME=B.TABLE_NAME AND A.COLUMN_NAME=B.COLUMN_NAME WHERE A.TABLE_NAME='%s' ORDER BY COLUMN_ID", tblName)
+	//fmt.Println(sqlStr)
+	rows, err := srcDb.Query(sqlStr)
 	if err != nil {
 		log.Error(err)
 	}
@@ -161,3 +162,66 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 	}
 	<-ch
 }
+
+func (tb *Table) IdxCreate(logDir string, tableName string, ch chan struct{}, id int) {
+	defer wg2.Done()
+	destIdxSql := ""
+	// 查询索引、主键、唯一约束等信息，批量生成创建语句
+	sqlStr := fmt.Sprintf("SELECT (CASE WHEN C.CONSTRAINT_TYPE = 'P' OR C.CONSTRAINT_TYPE = 'R' THEN 'ALTER TABLE `' || T.TABLE_NAME || '` ADD CONSTRAINT ' ||'`'||T.INDEX_NAME||'`' || (CASE WHEN C.CONSTRAINT_TYPE = 'P' THEN ' PRIMARY KEY (' ELSE ' FOREIGN KEY (' END) || listagg(T.COLUMN_NAME,',') within group(order by T.COLUMN_position) || ');' ELSE 'CREATE ' || (CASE WHEN I.UNIQUENESS = 'UNIQUE' THEN I.UNIQUENESS || ' ' ELSE CASE WHEN I.INDEX_TYPE = 'NORMAL' THEN '' ELSE  I.INDEX_TYPE || ' '  END END) || 'INDEX ' || '`'||T.INDEX_NAME||'`' || ' ON ' || T.TABLE_NAME || '(' ||listagg(T.COLUMN_NAME,',') within group(order by T.COLUMN_position) || ');' END) SQL_CMD FROM USER_IND_COLUMNS T, USER_INDEXES I, USER_CONSTRAINTS C WHERE T.INDEX_NAME = I.INDEX_NAME  AND T.INDEX_NAME = C.CONSTRAINT_NAME(+)  and i.index_type != 'FUNCTION-BASED NORMAL' and i.table_name='%s' GROUP BY T.TABLE_NAME, T.INDEX_NAME, I.UNIQUENESS, I.INDEX_TYPE,C.CONSTRAINT_TYPE", tableName)
+	//fmt.Println(sql)
+	rows, err := srcDb.Query(sqlStr)
+	if err != nil {
+		log.Error(err)
+	}
+	defer rows.Close()
+	// 从sql结果集遍历，获取到创建语句
+	for rows.Next() {
+		if err := rows.Scan(&destIdxSql); err != nil {
+			log.Error(err)
+		}
+		// 创建目标索引，主键、其余约束
+		if _, err = destDb.Exec(destIdxSql); err != nil {
+			log.Error("index ", destIdxSql, " create index failed ", err)
+			LogError(logDir, "idxCreateFailed", destIdxSql, err)
+			failedCount += 1
+		}
+	}
+	if destIdxSql != "" {
+		log.Info("[", id, "] Table ", tableName, " create index finish ")
+	}
+	<-ch
+}
+
+// 单线程，不使用goroutine创建索引
+//func (tb *Table) IdxCreate(logDir string) (result []string) {
+//	startTime := time.Now()
+//	failedCount := 0
+//	id := 0
+//	// 查询索引、主键、唯一约束等信息，批量生成创建语句
+//	sqlStr := fmt.Sprintf("SELECT (CASE WHEN C.CONSTRAINT_TYPE = 'P' OR C.CONSTRAINT_TYPE = 'R' THEN 'ALTER TABLE `' || T.TABLE_NAME || '` ADD CONSTRAINT ' ||'`'||T.INDEX_NAME||'`' || (CASE WHEN C.CONSTRAINT_TYPE = 'P' THEN ' PRIMARY KEY (' ELSE ' FOREIGN KEY (' END) || listagg(T.COLUMN_NAME,',') within group(order by T.COLUMN_position) || ');' ELSE 'CREATE ' || (CASE WHEN I.UNIQUENESS = 'UNIQUE' THEN I.UNIQUENESS || ' ' ELSE CASE WHEN I.INDEX_TYPE = 'NORMAL' THEN '' ELSE  I.INDEX_TYPE || ' '  END END) || 'INDEX ' || '`'||T.INDEX_NAME||'`' || ' ON ' || T.TABLE_NAME || '(' ||listagg(T.COLUMN_NAME,',') within group(order by T.COLUMN_position) || ');' END) SQL_CMD FROM USER_IND_COLUMNS T, USER_INDEXES I, USER_CONSTRAINTS C WHERE T.INDEX_NAME = I.INDEX_NAME  AND T.INDEX_NAME = C.CONSTRAINT_NAME(+)  and i.index_type != 'FUNCTION-BASED NORMAL'  GROUP BY T.TABLE_NAME, T.INDEX_NAME, I.UNIQUENESS, I.INDEX_TYPE,C.CONSTRAINT_TYPE",tableName)
+//	//fmt.Println(sql)
+//	rows, err := srcDb.Query(sqlStr)
+//	if err != nil {
+//		log.Error(err)
+//	}
+//	defer rows.Close()
+//	// 从sql结果集遍历，获取到创建语句
+//	for rows.Next() {
+//		id += 1
+//		if err := rows.Scan(&tb.destIdxSql); err != nil {
+//			log.Error(err)
+//		}
+//		// 创建目标索引，主键、其余约束
+//		log.Info(fmt.Sprintf("%v ProcessingID %s %s", time.Now().Format("2006-01-02 15:04:05.000000"), strconv.Itoa(id), tb.destIdxSql))
+//		if _, err = destDb.Exec(tb.destIdxSql); err != nil {
+//			log.Error("index ", tb.destIdxSql, " create index failed ", err)
+//			LogError(logDir, "idxCreateFailed", tb.destIdxSql, err)
+//			failedCount += 1
+//		}
+//	}
+//	endTime := time.Now()
+//	cost := time.Since(startTime)
+//	log.Info("index  count ", id)
+//	result = append(result, "Index", startTime.Format("2006-01-02 15:04:05.000000"), endTime.Format("2006-01-02 15:04:05.000000"), strconv.Itoa(failedCount), cost.String())
+//	return result
+//}
