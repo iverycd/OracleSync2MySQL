@@ -22,7 +22,7 @@ release:
 		tar czvf ${BINARY}-linux-arm64-${VERSION}.tar.gz ./${BINARY} ./example.yml
 		# Build for linux
 		go clean
-		CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -ldflags "-s -w -X main.Version=${VERSION}"
+		CGO_ENABLED=1 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -ldflags "-s -w -X main.Version=${VERSION}"
 		tar czvf ${BINARY}-linux-x64-${VERSION}.tar.gz ./${BINARY} ./example.yml
 		# Build for win
 		go clean

@@ -80,7 +80,17 @@ e.g.
 OracleSync2MySQL.exe --config example.yml
 
 on Linux and MacOS you can run
-./OracleSync2MySQL --config example.yml
+Note: If running on Linux, please first set the environment variable in the directory where the tool is located to specify the instantclient used by the current tool directory
+
+[root@uatenv OracleSync2MySQL]# pwd
+/opt/OracleSync2MySQL
+
+[root@uatenv OracleSync2MySQL]# ls
+  example.yml  instantclient   OracleSync2MySQL
+  
+[root@uatenv OracleSync2MySQL]# export LD_LIBRARY_PATH=./instantclient
+
+[root@uatenv OracleSync2MySQL]#./OracleSync2MySQL --config example.yml
 ```
 
 ### 3 View Migration Summary
@@ -153,6 +163,18 @@ OracleSync2MySQL.exe  --config file.yml
 ```
 e.g.
 OracleSync2MySQL.exe --config example.yml
+
+Note: If running on Linux, please first set the environment variable in the directory where the tool is located to specify the instantclient used by the current tool directory
+
+[root@uatenv OracleSync2MySQL]# pwd
+/opt/OracleSync2MySQL
+
+[root@uatenv OracleSync2MySQL]# ls
+  example.yml  instantclient   OracleSync2MySQL
+  
+[root@uatenv OracleSync2MySQL]# export LD_LIBRARY_PATH=./instantclient
+
+[root@uatenv OracleSync2MySQL]#./OracleSync2MySQL --config example.yml
 ```
 
 #### 2 Custom SQL Query Migration
@@ -187,3 +209,30 @@ OracleSync2MySQL.exe  --config file.yml createTable -s -t
 e.g.
 OracleSync2MySQL.exe  --config example.yml createTable -s -t
 ```
+
+## change history
+### v0.0.5
+2023-08-14
+Add Oracle instantclient
+
+### v0.0.4
+2023-08-04
+
+Fix the issue of tables without data not being created in the target database, add new indexes, and migrate constraints
+
+
+### v0.0.3
+2023-08-01
+
+Modify the number of connection pools for the source and target databases to unlimited, and use Godror to connect to Oracle
+
+### v0.0.2
+2023-07-28
+
+Paging query to obtain bug fixes and increase timestamp type adaptation
+
+
+### v0.0.1
+2023-07-27
+
+Oracle full database migration of tables and table data to the target MySQL database

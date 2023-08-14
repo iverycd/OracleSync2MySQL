@@ -77,7 +77,16 @@ OracleSync2MySQL.exe  --config 配置文件
 OracleSync2MySQL.exe --config example.yml
 
 如果是Linux或者macOS请在终端运行
-./OracleSync2MySQL --config example.yml
+备注:如果在linux下运行，请先在工具所在目录设定下环境变量LD_LIBRARY_PATH中指定当前工具目录使用的instantclient
+[root@uatenv OracleSync2MySQL]# pwd
+/opt/OracleSync2MySQL
+
+[root@uatenv OracleSync2MySQL]# ls
+  example.yml  instantclient   OracleSync2MySQL
+  
+[root@uatenv OracleSync2MySQL]# export LD_LIBRARY_PATH=./instantclient
+
+[root@uatenv OracleSync2MySQL]#./OracleSync2MySQL --config example.yml
 ```
 
 ### 2.3 查看迁移摘要
@@ -147,6 +156,18 @@ OracleSync2MySQL.exe  --config 配置文件
 ```
 示例
 OracleSync2MySQL.exe --config example.yml
+
+如果是Linux或者macOS请在终端运行
+备注:如果在linux下运行，请先在工具所在目录设定下环境变量LD_LIBRARY_PATH中指定当前工具目录使用的instantclient
+[root@uatenv OracleSync2MySQL]# pwd
+/opt/OracleSync2MySQL
+
+[root@uatenv OracleSync2MySQL]# ls
+  example.yml  instantclient   OracleSync2MySQL
+  
+[root@uatenv OracleSync2MySQL]# export LD_LIBRARY_PATH=./instantclient
+
+[root@uatenv OracleSync2MySQL]#./OracleSync2MySQL --config example.yml
 ```
 
 ### 2 自定义SQL查询迁移
@@ -181,3 +202,27 @@ OracleSync2MySQL.exe  --config 配置文件 createTable -s -t
 示例
 OracleSync2MySQL.exe  --config example.yml createTable -s -t
 ```
+
+## change history
+### v0.0.5
+2023-08-14
+工具新增Oracle instantclient在工具同一目录
+
+
+### v0.0.4
+2023-08-04
+修复没有数据的表没有在目标库创建的问题，新增索引以及约束迁移
+
+
+### v0.0.3
+2023-08-01
+修改连接源库以及目标库连接池数量为不限制，使用godror连接Oracle
+
+### v0.0.2
+2023-07-28
+分页查询获取bug修复，增加timestamp类型适配
+
+
+### v0.0.1
+2023-07-27
+Oracle全库迁移表和表数据到目标MySQL数据库

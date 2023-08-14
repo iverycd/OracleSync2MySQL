@@ -48,7 +48,7 @@ func PrepareSrc(connStr *connect.DbConnStr) {
 	var err error
 	//srcDb, err = sql.Open("oracle", srcConn)  //go-ora
 	//srcDb, err = sql.Open("godror", `user="one" password="oracle" connectString="192.168.189.200:1521/orcl" libDir="/Users/kay/Documents/database/oracle/instantclient_19_8_mac"`)//直接连接方式
-	oracleConnStr.LibDir = "/Users/kay/Documents/database/oracle/instantclient_19_8_mac"
+	oracleConnStr.LibDir = "instantclient"
 	oracleConnStr.Username = srcUserName
 	oracleConnStr.Password = godror.NewPassword(srcPassword)
 	oracleConnStr.ConnectString = fmt.Sprintf("%s:%s/%s", srcHost, strconv.Itoa(srcPort), srcDatabase)
