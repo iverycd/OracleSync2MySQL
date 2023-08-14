@@ -19,11 +19,11 @@ run on Windows,Linux,macOS
 
 ## Installation
 
-tar and run 
+unzip and run 
 
 e.g.
 
-`[root@localhost opt]# tar -zxvf OracleSync2MySQL-linux64-0.0.1.tar.gz`
+`[root@localhost opt]# unzip OracleSync2MySQL-linux64-0.0.1.zip`
 
 ## How to use
 

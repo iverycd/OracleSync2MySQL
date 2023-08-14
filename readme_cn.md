@@ -18,10 +18,10 @@
 
 解压之后即可运行此工具
 
-若在Linux环境下请使用tar解压，例如：
+若在Linux环境下请使用unzip解压，例如：
 
 
-`[root@localhost opt]# tar -zxvf OracleSync2MySQL-linux64-0.0.1.tar.gz`
+`[root@localhost opt]# unzip OracleSync2MySQL-linux64-0.0.1.zip`
 
 ## 二、使用方法
 
