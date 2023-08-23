@@ -106,10 +106,6 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	for _, sqlList := range tableMap {
 		goroutineSize += len(sqlList)
 	}
-	// 每个goroutine运行开始以及结束之后使用的通道，主要用于控制内层的goroutine任务与外层main线程的同步，即主线程需要等待子任务完成
-	// ch := make(chan int, goroutineSize)  //v0.1.4及之前的版本通道使用的通道，配合下面for循环遍历行数据迁移失败的计数
-	// 在协程里运行函数response，主要是从下面调用协程go runMigration的时候获取到里面迁移行数据失败的数量
-	//go response()
 	//遍历tableMap，先遍历表，再遍历该表的sql切片集合
 	migDataStart := time.Now()
 	for tableName, sqlFullSplit := range tableMap { //获取单个表名
@@ -131,16 +127,6 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	// 单独计算迁移表行数据的耗时
 	migDataEnd := time.Now()
 	migCost := migDataEnd.Sub(migDataStart)
-	// v0.1.4版本之前通过循环获取ch通道里写的int数据判断是否有迁移行数据失败的表，如果通道里发送的数据是2说明copy失败了
-	//migDataFailed := 0
-	// 这里是等待上面所有goroutine任务完成，才会执行for循环下面的动作
-	//for i := 0; i < goroutineSize; i++ {
-	//	migDataRet := <-ch
-	//	log.Info("goroutine[", i, "]", " finish ", time.Now().Format("2006-01-02 15:04:05.000000"))
-	//	if migDataRet == 2 {
-	//		migDataFailed += 1
-	//	}
-	//}
 	tableDataRet := []string{"TableData", migDataStart.Format("2006-01-02 15:04:05.000000"), migDataEnd.Format("2006-01-02 15:04:05.000000"), " - ", migCost.String()}
 	// 数据库对象的迁移结果
 	var rowsAll = [][]string{{}}
@@ -148,9 +134,7 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	rowsAll = append(rowsAll, tabRet, tableDataRet)
 	// 如果指定-s模式不创建下面对象
 	if selFromYml != true {
-		//	// 创建序列
-		//	seqRet := db.SeqCreate(logDir)
-		// 创建索引、约束
+		// 创建索引、约束(主键、唯一约束)
 		ch := make(chan struct{}, maxParallel)
 		id := 0
 		failedCount = 0
@@ -166,15 +150,20 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 		endTime := time.Now()
 		cost := time.Since(startTime)
 		idxRet = append(idxRet, "Index", startTime.Format("2006-01-02 15:04:05.000000"), endTime.Format("2006-01-02 15:04:05.000000"), strconv.Itoa(failedCount), cost.String())
-		//	// 创建外键
-		//	fkRet := db.FKCreate(logDir)
-		//	// 创建视图
-		//	viewRet := db.ViewCreate(logDir)
-		//	// 创建触发器
-		//	triRet := db.TriggerCreate(logDir)
+		// 把源数据库触发器+序列形式批量改成目标数据库的自增列形式
+		seqRet := db.SeqCreate(logDir)
+		// 创建外键
+		fkRet := db.FkCreate(logDir)
+		// 创建normal类型的索引，如create index idx_id on test(id desc)
+		nomalIdxRet := db.NormalIdx(logDir)
+		// 创建注释
+		commentRet := db.CommentCreate(logDir)
+		// 创建视图
+		viewRet := db.ViewCreate(logDir)
+		// 转储源数据库的函数、存储过程等对象到平面文件
+		db.PrintDbFunc(logDir)
 		// 以上对象迁移结果追加到切片,进行整合
-		rowsAll = append(rowsAll, idxRet)
-		//rowsAll = append(rowsAll, seqRet, idxRet, fkRet, viewRet, triRet)
+		rowsAll = append(rowsAll, idxRet, seqRet, fkRet, nomalIdxRet, commentRet, viewRet)
 	}
 	// 输出配置文件信息
 	fmt.Println("------------------------------------------------------------------------------------------------------------------------------")

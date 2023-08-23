@@ -29,7 +29,24 @@ e.g.
 
 The following is an example of a Windows platform, with the same command-line parameters as other operating systems
 
-`Note`: Please run this tool in `CMD` on a `Windows` system, or in a directory with read and write permissions on `MacOS` or `Linux`
+`Note`: Please run this tool in `CMD` on  `Windows` system, or in a directory with read and write permissions on `MacOS` or `Linux`
+
+
+`If you run on linux please first set LD_LIBRARY_PATH=./instantclient`
+
+```bash
+example below
+
+[root@uatenv OracleSync2MySQL]# pwd
+/opt/OracleSync2MySQL
+
+[root@uatenv OracleSync2MySQL]# ls
+example.yml  instantclient   OracleSync2MySQL
+
+[root@uatenv OracleSync2MySQL]# export LD_LIBRARY_PATH=./instantclient
+
+```
+
 
 ### 1 Edit yml configuration file
 
@@ -211,28 +228,29 @@ OracleSync2MySQL.exe  --config example.yml createTable -s -t
 ```
 
 ## change history
+### v0.0.6
+2023-08-23
+New add triggers & sequence Oracle autoincrement migration to target database autoincrement columns, migrate foreign keys, indexes of normal index type, comment comments, views, dump source database functions, stored procedures, and other objects to flat files
+
+
 ### v0.0.5
 2023-08-14
 Add Oracle instantclient
 
 ### v0.0.4
 2023-08-04
-
 Fix the issue of tables without data not being created in the target database, add new indexes, and migrate constraints
 
 
 ### v0.0.3
 2023-08-01
-
 Modify the number of connection pools for the source and target databases to unlimited, and use Godror to connect to Oracle
 
 ### v0.0.2
 2023-07-28
-
 Paging query to obtain bug fixes and increase timestamp type adaptation
 
 
 ### v0.0.1
 2023-07-27
-
 Oracle full database migration of tables and table data to the target MySQL database

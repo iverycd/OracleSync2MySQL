@@ -17,6 +17,12 @@ type Database interface {
 	// TableCreate (logDir string, tableMap map[string][]string) (result []string) 单线程
 	TableCreate(logDir string, tblName string, ch chan struct{})
 	IdxCreate(logDir string, tableName string, ch chan struct{}, id int)
+	SeqCreate(logDir string) (ret []string)
+	FkCreate(logDir string) (ret []string)
+	NormalIdx(logDir string) (ret []string)
+	CommentCreate(logDir string) (ret []string)
+	ViewCreate(logDir string) (ret []string)
+	PrintDbFunc(logDir string)
 }
 
 type Table struct {
@@ -190,6 +196,220 @@ func (tb *Table) IdxCreate(logDir string, tableName string, ch chan struct{}, id
 		log.Info("[", id, "] Table ", tableName, " create index finish ")
 	}
 	<-ch
+}
+
+func (tb *Table) SeqCreate(logDir string) (ret []string) {
+	startTime := time.Now()
+	failedCount = 0
+	var dbRet, tableName string
+	rows, err := srcDb.Query("select table_name,trigger_body from user_triggers where upper(trigger_type) ='BEFORE EACH ROW'")
+	if err != nil {
+		log.Error(err)
+	}
+	defer rows.Close()
+	idx := 0
+	for rows.Next() {
+		idx += 1
+		err := rows.Scan(&tableName, &dbRet)
+		if err != nil {
+			log.Error(err)
+		}
+		dbRet = strings.ToUpper(dbRet)
+		dbRet = strings.ReplaceAll(dbRet, "INTO:", "INTO :")
+		dbRet = strings.ReplaceAll(dbRet, "SYS.DUAL ", "DUAL")
+		dbRet = strings.ReplaceAll(dbRet, "SYS.DUAL", "DUAL")
+		dbRet = strings.ReplaceAll(dbRet, "\n", "")
+		pattern := `SELECT\s+(.*?)\.NEXTVAL\s+INTO\s+:NEW\.`
+		re := regexp.MustCompile(pattern)
+		match := re.FindStringSubmatch(dbRet)
+		if len(match) > 0 { // 第一层，先正则匹配SELECT .NEXTVAL INTO :NEW包含的字符窜,主要是要匹配到自增列性质的触发器
+			//如果符合第一层正则的条件，再匹配第二层，第二层主要是获取:NEW.后面的名称，即自增列名称
+			re := regexp.MustCompile(`:NEW\.(\w+)`) // 正则表达式，匹配以 ":NEW." 开头的字符串，并提取后面的单词字符（包括字母、数字和下划线）
+			match := re.FindStringSubmatch(dbRet)   // 查找匹配项
+			if len(match) == 2 {
+				autoColName := match[1]
+				// 创建目标数据库该表表的自增列索引
+				sqlAutoColIdx := "create index ids_" + tableName + "_" + autoColName + "_" + strconv.Itoa(idx) + " on " + tableName + "(" + autoColName + ")"
+				log.Info("[", idx, "] create auto_increment for table ", tableName)
+				if _, err = destDb.Exec(sqlAutoColIdx); err != nil {
+					log.Error(sqlAutoColIdx, " create index autoCol failed ", err)
+					LogError(logDir, "AutoIdxCreateFailed", sqlAutoColIdx, err)
+					failedCount += 1
+				}
+				// 更改目标数据库该表的列属性为自增列
+				sqlModifyAuto := "alter table " + tableName + " modify " + autoColName + " bigint auto_increment"
+				if _, err = destDb.Exec(sqlModifyAuto); err != nil {
+					log.Error(sqlModifyAuto, " failed ", err)
+					LogError(logDir, "alterTableFailed", sqlModifyAuto, err)
+					failedCount += 1
+				}
+			}
+		}
+	}
+	endTime := time.Now()
+	cost := time.Since(startTime)
+	ret = append(ret, "AutoIncrement", startTime.Format("2006-01-02 15:04:05.000000"), endTime.Format("2006-01-02 15:04:05.000000"), strconv.Itoa(failedCount), cost.String())
+	return ret
+}
+
+func (tb *Table) FkCreate(logDir string) (ret []string) {
+	startTime := time.Now()
+	failedCount = 0
+	var tableName, sqlStr string
+	rows, err := srcDb.Query("SELECT B.TABLE_NAME,'ALTER TABLE ' || B.TABLE_NAME || ' ADD CONSTRAINT ' ||\n       B.CONSTRAINT_NAME || ' FOREIGN KEY (' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM USER_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.CONSTRAINT_NAME) || ') REFERENCES ' ||\n       (SELECT B1.table_name FROM USER_CONSTRAINTS B1\n        WHERE B1.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || '(' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM USER_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || ');'\nFROM USER_CONSTRAINTS B\nWHERE B.CONSTRAINT_TYPE = 'R' ")
+	if err != nil {
+		log.Error(err)
+	}
+	defer rows.Close()
+	idx := 0
+	for rows.Next() {
+		idx += 1
+		err := rows.Scan(&tableName, &sqlStr)
+		if err != nil {
+			log.Error(err)
+		}
+		log.Info("[", idx, "] create foreign key for table ", tableName)
+		if _, err = destDb.Exec(sqlStr); err != nil {
+			log.Error(sqlStr, " create foreign key failed ", err)
+			LogError(logDir, "FKCreateFailed", sqlStr, err)
+			failedCount += 1
+		}
+	}
+	endTime := time.Now()
+	cost := time.Since(startTime)
+	ret = append(ret, "ForeignKey", startTime.Format("2006-01-02 15:04:05.000000"), endTime.Format("2006-01-02 15:04:05.000000"), strconv.Itoa(failedCount), cost.String())
+	return ret
+}
+
+func (tb *Table) NormalIdx(logDir string) (ret []string) {
+	startTime := time.Now()
+	failedCount = 0
+	var idxName, tableName, sqlStr, userName, createSql string
+	err := srcDb.QueryRow("select user from dual").Scan(&userName)
+	if err != nil {
+		log.Error(err)
+	}
+	rows, err := srcDb.Query("Select index_name,table_name from user_indexes where index_type='FUNCTION-BASED NORMAL'")
+	if err != nil {
+		log.Error(err)
+	}
+	defer rows.Close()
+	idx := 0
+	for rows.Next() {
+		idx += 1
+		err := rows.Scan(&idxName, &tableName) // 先获取normal-index的索引名称和表名
+		if err != nil {
+			log.Error(err)
+		}
+		if len(idxName) > 0 { // 如果有normal-index，就通过dbms_metadata获取该normal-index的DDL语句
+			sqlStr = fmt.Sprintf("select trim(replace(regexp_replace(regexp_replace(SUBSTR(upper(to_char(dbms_metadata.get_ddl('INDEX','%s','%s'))), 1, INSTR(upper(to_char(dbms_metadata.get_ddl('INDEX','%s','%s'))), ' PCTFREE')-1),'\"','',1,0,'i'),'%s'||'.','',1,0,'i'),chr(10),'')) from dual", idxName, userName, idxName, userName, userName)
+			err := srcDb.QueryRow(sqlStr).Scan(&createSql) // 获取到创建normal-index的sql语句
+			if err != nil {
+				log.Error(err)
+			}
+			log.Info("[", idx, "] create normal index for table ", tableName)
+			if _, err = destDb.Exec(createSql); err != nil {
+				log.Error(createSql, " create normal index failed ", err)
+				LogError(logDir, "NormalIdxCreateFailed", createSql, err)
+				failedCount += 1
+			}
+		}
+
+	}
+	endTime := time.Now()
+	cost := time.Since(startTime)
+	ret = append(ret, "NormalIndex", startTime.Format("2006-01-02 15:04:05.000000"), endTime.Format("2006-01-02 15:04:05.000000"), strconv.Itoa(failedCount), cost.String())
+	return ret
+}
+
+func (tb *Table) CommentCreate(logDir string) (ret []string) {
+	startTime := time.Now()
+	failedCount = 0
+	var tableName, createSql string
+	rows, err := srcDb.Query("select TABLE_NAME,'alter table '||TABLE_NAME||' comment '||''''||COMMENTS||'''' as create_comment  from USER_TAB_COMMENTS where COMMENTS is not null")
+	if err != nil {
+		log.Error(err)
+	}
+	defer rows.Close()
+	idx := 0
+	for rows.Next() {
+		idx += 1
+		err := rows.Scan(&tableName, &createSql) // 先获取normal-index的索引名称和表名
+		if err != nil {
+			log.Error(err)
+		}
+		if len(createSql) > 0 { // 如果有normal-index，就通过dbms_metadata获取该normal-index的DDL语句
+			log.Info("[", idx, "] create comment for table ", tableName)
+			if _, err = destDb.Exec(createSql); err != nil {
+				log.Error(createSql, " create comment failed ", err)
+				LogError(logDir, "CommentCreateFailed", createSql, err)
+				failedCount += 1
+			}
+		}
+
+	}
+	endTime := time.Now()
+	cost := time.Since(startTime)
+	ret = append(ret, "Comment", startTime.Format("2006-01-02 15:04:05.000000"), endTime.Format("2006-01-02 15:04:05.000000"), strconv.Itoa(failedCount), cost.String())
+	return ret
+}
+
+func (tb *Table) ViewCreate(logDir string) (ret []string) {
+	startTime := time.Now()
+	failedCount = 0
+	var dbRet, viewName string
+	rows, err := srcDb.Query("select view_name,text from user_views")
+	if err != nil {
+		log.Error(err)
+	}
+	defer rows.Close()
+	idx := 0
+	for rows.Next() {
+		idx += 1
+		err := rows.Scan(&viewName, &dbRet)
+		if err != nil {
+			log.Error(err)
+		}
+		if _, err = srcDb.Exec("alter view " + viewName + " compile"); err != nil { // 先编译下源数据库的视图
+			log.Error(" alter view ", viewName, " compile failed", err)
+		}
+		dbRet = strings.ToUpper(dbRet)
+		dbRet = strings.ReplaceAll(dbRet, "--", "-- -- ")
+		dbRet = strings.ReplaceAll(dbRet, "\"", "`")
+		dbRet = strings.ReplaceAll(dbRet, "NVL(", "IFNULL(")
+		dbRet = strings.ReplaceAll(dbRet, "unistr('\0030')", "0")
+		dbRet = strings.ReplaceAll(dbRet, "unistr('\0031')", "1")
+		dbRet = strings.ReplaceAll(dbRet, "unistr('\0033')", "3")
+		if len(viewName) > 0 {
+			sqlStr := "create or replace view " + viewName + " as " + dbRet
+			log.Info("[", idx, "] create view ", viewName)
+			if _, err = destDb.Exec(sqlStr); err != nil {
+				//log.Error(sqlStr, " create view failed ", err)
+				LogError(logDir, "ViewCreateFailed", sqlStr, err)
+				failedCount += 1
+			}
+		}
+	}
+	endTime := time.Now()
+	cost := time.Since(startTime)
+	ret = append(ret, "View", startTime.Format("2006-01-02 15:04:05.000000"), endTime.Format("2006-01-02 15:04:05.000000"), strconv.Itoa(failedCount), cost.String())
+	return ret
+}
+
+func (tb *Table) PrintDbFunc(logDir string) { //转储源数据库的函数、存储过程、包等对象到平面文件
+	var dbRet string
+	rows, err := srcDb.Query("SELECT DBMS_METADATA.GET_DDL(U.OBJECT_TYPE, u.object_name) ddl_sql FROM USER_OBJECTS u where U.OBJECT_TYPE IN ('FUNCTION','PROCEDURE','PACKAGE') order by OBJECT_TYPE")
+	if err != nil {
+		log.Error(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		err := rows.Scan(&dbRet)
+		if err != nil {
+			log.Error(err)
+		}
+		LogError(logDir, "FuncObject", dbRet, err)
+	}
 }
 
 // 单线程，不使用goroutine创建索引

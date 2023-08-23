@@ -29,6 +29,19 @@
 
 `注意:`在`Windows`系统请在`CMD`运行此工具，如果是在`MacOS`或者`Linux`系统，请在有读写权限的目录运行
 
+备注:如果在linux下运行，请先在工具所在目录设定下环境变量LD_LIBRARY_PATH中指定当前工具目录使用的instantclient,如下:
+
+```bash
+[root@uatenv OracleSync2MySQL]# pwd
+/opt/OracleSync2MySQL
+
+[root@uatenv OracleSync2MySQL]# ls
+example.yml  instantclient   OracleSync2MySQL
+
+[root@uatenv OracleSync2MySQL]# export LD_LIBRARY_PATH=./instantclient
+```
+
+
 ### 2.1 编辑yml配置文件
 
 编辑`example.cfg`文件，分别输入源库跟目标数据库信息
@@ -204,6 +217,10 @@ OracleSync2MySQL.exe  --config example.yml createTable -s -t
 ```
 
 ## change history
+### v0.0.6
+2023-08-23
+新增触发器+序列形式的Oracle自增迁移到目标库自增列，迁移外键，normal-index类型的索引，comment注释，视图，转储源数据库的函数、存储过程等对象到平面文件
+
 ### v0.0.5
 2023-08-14
 工具新增Oracle instantclient在工具同一目录
