@@ -363,6 +363,8 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 	//}
 	// 生成单行数据的占位符，如(?,?),表有几列就有几个问号
 	singleRowCol := fmt.Sprintf("(%s)", strings.Join(strings.Split(strings.Repeat("?", len(columns)), ""), ","))
+	// 用于insert语句拼接的列名，即括号包围的列名(`id`,`name`,`sex`,`sex2`,`sex3`)
+	colName := "(`" + strings.Join(columns, "`,`") + "`)"
 	// 批量插入时values后面总的占位符，批量有多少行数据，就有多少个(?,?)，例如(?,?),(?,?)
 	var totalInsertCol string
 	// 表总行数
@@ -410,7 +412,7 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 					//theTime, _ := time.ParseInLocation(timeLayout, string(colValue), loc) //使用模板在对应时区转化为time.time类型
 					theTime, _ := time.ParseInLocation(timeLayout, timeValue.Format("2006-01-02 15:04:05"), loc) //使用模板在对应时区转化为time.time类型
 					value = theTime.Format("2006-01-02 15:04:05")                                                //格式化，否则时差相差8小时
-				} else if colType[i] == "TIMESTAMPDTY" {
+				} else if colType[i] == "TIMESTAMPDTY" || colType[i] == "TIMESTAMP" {
 					timeValue, err := time.Parse(time.RFC3339, string(colValue)) // RFC3339= "2006-01-02T15:04:05Z07:00",先把列值转为标准的时间格式
 					if err != nil {
 						fmt.Println("convert timestamp error:", err)
@@ -432,7 +434,8 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 		// 每隔一定行数，批量插入一次
 		if totalRow%batchRowSize == 0 {
 			totalInsertCol = strings.TrimRight(totalInsertCol, ",") // 去掉占位符最后括号的逗号
-			insertSql = fmt.Sprintf("insert into `%s` values %s", tableName, totalInsertCol)
+			//insertSql = fmt.Sprintf("insert into `%s` values %s", tableName, totalInsertCol)
+			insertSql = fmt.Sprintf("insert into `%s`%s values %s", tableName, colName, totalInsertCol)
 			if len(totalPrepareValues) != 0 { // 排除掉多线程遇到空切片的数据
 				stmt, err := txn.Prepare(insertSql) //prepare里的方法CopyIn只是把copy语句拼接好并返回，并非直接执行copy
 				if err != nil {
@@ -473,7 +476,8 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 		log.Error("Commit failed ", err)
 	}
 	// rows.Next方法最后一部分数据的插入
-	insertSql = fmt.Sprintf("insert into `%s` values %s", tableName, totalInsertCol)
+	//insertSql = fmt.Sprintf("insert into `%s` values %s", tableName, totalInsertCol)
+	insertSql = fmt.Sprintf("insert into `%s`%s values %s", tableName, colName, totalInsertCol) // 目标数据库表结构是源数据库表结构超集即可，表结构无需完全一致即可迁移数据
 	insertSql = strings.TrimRight(insertSql, ",")
 	txn, err = destDb.Begin() //开始一个事务
 	if err != nil {

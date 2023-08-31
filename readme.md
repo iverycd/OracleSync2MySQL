@@ -8,6 +8,7 @@
 Online migration of Oracle databases to target MySQL kernel databases, such as MySQL, PolarDB, Percona Server MySQL, MariaDB, OceanBase, TiDB, GaussDB for MySQL
 
 - Migrate the entire database table structure and table row data to the target database
+- The target database table structure is a superset of the source database that can migrate row data
 - Multi threaded batch migration of table row data
 - Data comparison between source and target databases
 
@@ -171,7 +172,7 @@ INFO[0040] Table Compare finish elapsed time 11.307881434s
 ## Other migration modes
 
 
-#### 1 Full database migration
+### 1 Full database migration
 
 Migrate entire database table structure, row data, views, index constraints, and self increasing columns to target database
 
@@ -194,7 +195,7 @@ Note: If running on Linux, please first set the environment variable in the dire
 [root@uatenv OracleSync2MySQL]#./OracleSync2MySQL --config example.yml
 ```
 
-#### 2 Custom SQL Query Migration
+### 2 Custom SQL Query Migration
 
 only migrate some tables not entire database, and migrate the table structure and table data to the target database according to the custom query statement in file.yml
 
@@ -205,7 +206,7 @@ e.g.
 OracleSync2MySQL.exe  --config example.yml -s
 ```
 
-#### 3 Migrate all table structures in the entire database
+### 3 Migrate all table structures in the entire database
 
 Create all table structure(only table metadata not row data) to  target database
 
@@ -216,7 +217,7 @@ e.g.
 OracleSync2MySQL.exe  --config example.yml createTable -t
 ```
 
-#### 4 Migrate the table structure of custom tables
+### 4 Migrate the table structure of custom tables
 
 Read custom tables from yml file and create target table 
 
@@ -227,7 +228,24 @@ e.g.
 OracleSync2MySQL.exe  --config example.yml createTable -s -t
 ```
 
+### 5 Migrate row data across the entire database
+
+Only migrate all row data from the source database to the target database, excluding table structures
+
+OracleSync2MySQL.exe  --config file.yml onlyData
+
+```
+e.g.
+OracleSync2MySQL.exe  --config example.yml onlyData
+```
+
+
 ## change history
+### v0.0.7
+2023-08-31
+When modifying the insert method for migrating data, the insert statement has been changed from the previous insert into tableName values to insert into tableName (col1, col2) values. Fix the issue of incorrect timestamp type conversion text
+
+
 ### v0.0.6
 2023-08-23
 New add triggers & sequence Oracle autoincrement migration to target database autoincrement columns, migrate foreign keys, indexes of normal index type, comment comments, views, dump source database functions, stored procedures, and other objects to flat files

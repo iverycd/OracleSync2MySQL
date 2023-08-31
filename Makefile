@@ -1,5 +1,5 @@
 # usage
-# eg. make release VERSION=V0.1.5
+# eg. make release VERSION=V0.1.5，cross compile only work fine with github.com/sijms/go-ora
 # Binary name
 BINARY=OracleSync2MySQL
 # Builds the project
@@ -22,7 +22,7 @@ release:
 		tar czvf ${BINARY}-linux-arm64-${VERSION}.tar.gz ./${BINARY} ./example.yml
 		# Build for linux
 		go clean
-		CGO_ENABLED=1 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -ldflags "-s -w -X main.Version=${VERSION}"
+		CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -ldflags "-s -w -X main.Version=${VERSION}"
 		tar czvf ${BINARY}-linux-x64-${VERSION}.tar.gz ./${BINARY} ./example.yml
 		# Build for win
 		go clean

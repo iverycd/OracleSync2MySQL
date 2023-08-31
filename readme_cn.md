@@ -6,6 +6,7 @@
 在线迁移Oracle到目标MySQL内核的数据库，如MySQL,PolarDB,Percona Server MySQL,MariaDB,OceanBase,TiDB,GaussDB for MySQL
 
 - 迁移全库表结构以及表行数据到目标数据库
+- 目标数据库表结构是源库超集即可迁移行数据
 - 多线程批量方式迁移表行数据
 - 数据比对源库以及目标库
 
@@ -160,7 +161,7 @@ INFO[0040] Table Compare finish elapsed time 11.307881434s
 
 ## 三、其他迁移模式
 
-### 1 全库迁移
+### 3.1 全库迁移
 
 迁移全库表结构、行数据，视图、索引约束、自增列等对象
 
@@ -183,7 +184,7 @@ OracleSync2MySQL.exe --config example.yml
 [root@uatenv OracleSync2MySQL]#./OracleSync2MySQL --config example.yml
 ```
 
-### 2 自定义SQL查询迁移
+### 3.2 自定义SQL查询迁移
 
 不迁移全库数据，只迁移部分表，根据配置文件中自定义查询语句迁移表结构和表数据到目标库
 
@@ -194,7 +195,7 @@ OracleSync2MySQL.exe  --config 配置文件 -s
 OracleSync2MySQL.exe  --config example.yml -s
 ```
 
-### 3 迁移全库所有表结构
+### 3.3 迁移全库所有表结构
 
 仅在目标库创建所有表的表结构
 
@@ -205,7 +206,7 @@ OracleSync2MySQL.exe  --config 配置文件 createTable -t
 OracleSync2MySQL.exe  --config example.yml createTable -t
 ```
 
-### 4 迁移自定义表的表结构
+### 3.4 迁移自定义表的表结构
 
 仅在目标库创建自定义的表
 
@@ -216,7 +217,24 @@ OracleSync2MySQL.exe  --config 配置文件 createTable -s -t
 OracleSync2MySQL.exe  --config example.yml createTable -s -t
 ```
 
+### 3.5 迁移全库的行数据
+
+仅迁移源库的所有行数据到目标库，不包括表结构
+
+OracleSync2MySQL.exe  --config 配置文件 onlyData
+
+```
+示例
+OracleSync2MySQL.exe  --config example.yml onlyData
+```
+
+
 ## change history
+### v0.0.7
+2023-08-31
+修改迁移数据时的insert方法，insert语句由之前的insert into tableName values改成了insert into tableName(col1,col2) values。修复timestamp类型转换文本不正确的问题
+
+
 ### v0.0.6
 2023-08-23
 新增触发器+序列形式的Oracle自增迁移到目标库自增列，迁移外键，normal-index类型的索引，comment注释，视图，转储源数据库的函数、存储过程等对象到平面文件
