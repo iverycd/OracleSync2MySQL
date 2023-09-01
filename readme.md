@@ -246,7 +246,7 @@ only migrate file.yml custom sql query table row data exclude table struct
 OracleSync2MySQL.exe  --config file.yml onlyData -s
 
 ```
-示例
+e.g.
 OracleSync2MySQL.exe  --config example.yml onlyData -s
 ```
 
