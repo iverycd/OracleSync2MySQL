@@ -1,5 +1,7 @@
 # OracleSync2MySQL
 
+![logo.png](image/logo.png)
+
 ([CN](https://github.com/iverycd/OracleSync2MySQL/blob/master/readme_cn.md))
 
 ## Features

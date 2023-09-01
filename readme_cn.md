@@ -1,4 +1,5 @@
 # OracleSync2MySQL
+![logo.png](image/logo.png)
 
 ## 一、工具特性以及环境要求
 ### 1.1 功能特性
