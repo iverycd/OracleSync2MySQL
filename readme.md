@@ -9,7 +9,7 @@ Online migration of Oracle databases to target MySQL kernel databases, such as M
 
 - Migrate the entire database table structure and table row data to the target database
 - The target database table structure is a superset of the source database that can migrate row data
-- Multi threaded batch migration of table row data
+- Multi thread batch migration of table row data
 - Data comparison between source and target databases
 
 
@@ -239,6 +239,16 @@ e.g.
 OracleSync2MySQL.exe  --config example.yml onlyData
 ```
 
+### 6 Migrate custom table row data
+
+only migrate file.yml custom sql query table row data exclude table struct
+
+OracleSync2MySQL.exe  --config file.yml onlyData -s
+
+```
+示例
+OracleSync2MySQL.exe  --config example.yml onlyData -s
+```
 
 ## change history
 ### v0.0.7

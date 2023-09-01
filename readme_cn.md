@@ -186,7 +186,7 @@ OracleSync2MySQL.exe --config example.yml
 
 ### 3.2 自定义SQL查询迁移
 
-不迁移全库数据，只迁移部分表，根据配置文件中自定义查询语句迁移表结构和表数据到目标库
+不迁移全库数据，只迁移部分表，根据配置文件中自定义查询语句迁移表结构和表行数据到目标库
 
 OracleSync2MySQL.exe  --config 配置文件 -s
 
@@ -197,7 +197,7 @@ OracleSync2MySQL.exe  --config example.yml -s
 
 ### 3.3 迁移全库所有表结构
 
-仅在目标库创建所有表的表结构
+仅在目标库创建所有表的表结构，不包括行数据
 
 OracleSync2MySQL.exe  --config 配置文件 createTable -t
 
@@ -208,7 +208,7 @@ OracleSync2MySQL.exe  --config example.yml createTable -t
 
 ### 3.4 迁移自定义表的表结构
 
-仅在目标库创建自定义的表
+仅在目标库创建自定义的表结构，不包括行数据
 
 OracleSync2MySQL.exe  --config 配置文件 createTable -s -t
 
@@ -228,6 +228,16 @@ OracleSync2MySQL.exe  --config 配置文件 onlyData
 OracleSync2MySQL.exe  --config example.yml onlyData
 ```
 
+### 3.6 迁移自定义表的行数据
+
+仅迁移yml配置文件中自定义查询sql的所有行数据到目标库，不包括表结构
+
+OracleSync2MySQL.exe  --config 配置文件 onlyData -s
+
+```
+示例
+OracleSync2MySQL.exe  --config example.yml onlyData -s
+```
 
 ## change history
 ### v0.0.7
