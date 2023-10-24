@@ -1,0 +1,29 @@
+package _cmd
+
+import (
+	"OracleSync2MySQL/connect"
+	"database/sql"
+	"fmt"
+	"github.com/godror/godror"
+	"strconv"
+)
+
+var oracleConnStr godror.ConnectionParams
+
+type DB struct {
+	*sql.DB
+}
+
+func NewDB(connStr *connect.DbConnStr) *DB {
+	srcHost := connStr.SrcHost
+	srcUserName := connStr.SrcUserName
+	srcPassword := connStr.SrcPassword
+	srcDatabase := connStr.SrcDatabase
+	srcPort := connStr.SrcPort
+	oracleConnStr.LibDir = "instantclient"
+	oracleConnStr.Username = srcUserName
+	oracleConnStr.Password = godror.NewPassword(srcPassword)
+	oracleConnStr.ConnectString = fmt.Sprintf("%s:%s/%s", srcHost, strconv.Itoa(srcPort), srcDatabase)
+	db := sql.OpenDB(godror.NewConnector(oracleConnStr))
+	return &DB{db}
+}

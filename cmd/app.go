@@ -171,8 +171,8 @@ func StrVal(value interface{}) string {
 }
 
 func cleanDBconn() {
-	// 遍历正在执行gomysql2pg的客户端，使用kill query 命令kill所有查询id
-	rows, err := srcDb.Query("select id from information_schema.PROCESSLIST where info like '/* goapp%';")
+	// 遍历正在执行的客户端，使用kill query 命令kill所有查询id
+	rows, err := destDb.Query("select id from information_schema.PROCESSLIST where info like '/* goapp%';")
 	if err != nil {
 		log.Error(err)
 	}
@@ -183,7 +183,7 @@ func cleanDBconn() {
 		if err != nil {
 			log.Error("rows.Scan(&id) failed!", err)
 		}
-		srcDb.Exec("kill query " + id)
+		destDb.Exec("kill query " + id)
 		log.Info("kill thread id ", id)
 	}
 }

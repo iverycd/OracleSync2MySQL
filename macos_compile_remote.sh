@@ -41,6 +41,7 @@ ssh administrator@192.168.149.80 "cd C:\go\src\OracleSync2MySQL && C:\Users\Admi
 ssh administrator@192.168.149.80 "cd C:\go\src\OracleSync2MySQL && del /f /s /q *.zip *.yml go* main.go cmd connect"
 scp -r /Users/kay/go/src/OracleSync2MySQL/cmd/ administrator@192.168.149.80:"C:\go\src\OracleSync2MySQL"
 scp -r /Users/kay/go/src/OracleSync2MySQL/connect/ administrator@192.168.149.80:"C:\go\src\OracleSync2MySQL"
+scp -r /Users/kay/go/src/OracleSync2MySQL/test/ administrator@192.168.149.80:"C:\go\src\OracleSync2MySQL"
 scp  /Users/kay/go/src/OracleSync2MySQL/go.mod administrator@192.168.149.80:"C:\go\src\OracleSync2MySQL"
 scp  /Users/kay/go/src/OracleSync2MySQL/go.sum administrator@192.168.149.80:"C:\go\src\OracleSync2MySQL"
 scp /Users/kay/go/src/OracleSync2MySQL/main.go administrator@192.168.149.80:"C:\go\src\OracleSync2MySQL"

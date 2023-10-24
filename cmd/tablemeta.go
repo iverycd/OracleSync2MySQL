@@ -185,6 +185,7 @@ func (tb *Table) IdxCreate(logDir string, tableName string, ch chan struct{}, id
 		if err := rows.Scan(&destIdxSql); err != nil {
 			log.Error(err)
 		}
+		destIdxSql = "/* goapp */" + destIdxSql
 		// 创建目标索引，主键、其余约束
 		if _, err = destDb.Exec(destIdxSql); err != nil {
 			log.Error("index ", destIdxSql, " create index failed ", err)
@@ -229,7 +230,7 @@ func (tb *Table) SeqCreate(logDir string) (ret []string) {
 			if len(match) == 2 {
 				autoColName := match[1]
 				// 创建目标数据库该表表的自增列索引
-				sqlAutoColIdx := "create index ids_" + tableName + "_" + autoColName + "_" + strconv.Itoa(idx) + " on " + tableName + "(" + autoColName + ")"
+				sqlAutoColIdx := "/* goapp */" + "create index ids_" + tableName + "_" + autoColName + "_" + strconv.Itoa(idx) + " on " + tableName + "(" + autoColName + ")"
 				log.Info("[", idx, "] create auto_increment for table ", tableName)
 				if _, err = destDb.Exec(sqlAutoColIdx); err != nil {
 					log.Error(sqlAutoColIdx, " create index autoCol failed ", err)
@@ -237,7 +238,7 @@ func (tb *Table) SeqCreate(logDir string) (ret []string) {
 					failedCount += 1
 				}
 				// 更改目标数据库该表的列属性为自增列
-				sqlModifyAuto := "alter table " + tableName + " modify " + autoColName + " bigint auto_increment"
+				sqlModifyAuto := "/* goapp */" + "alter table " + tableName + " modify " + autoColName + " bigint auto_increment"
 				if _, err = destDb.Exec(sqlModifyAuto); err != nil {
 					log.Error(sqlModifyAuto, " failed ", err)
 					LogError(logDir, "alterTableFailed", sqlModifyAuto, err)
@@ -269,6 +270,7 @@ func (tb *Table) FkCreate(logDir string) (ret []string) {
 			log.Error(err)
 		}
 		log.Info("[", idx, "] create foreign key for table ", tableName)
+		sqlStr = "/* goapp */" + sqlStr
 		if _, err = destDb.Exec(sqlStr); err != nil {
 			log.Error(sqlStr, " create foreign key failed ", err)
 			LogError(logDir, "FKCreateFailed", sqlStr, err)
@@ -308,6 +310,7 @@ func (tb *Table) NormalIdx(logDir string) (ret []string) {
 				log.Error(err)
 			}
 			log.Info("[", idx, "] create normal index for table ", tableName)
+			createSql = "/* goapp */" + createSql
 			if _, err = destDb.Exec(createSql); err != nil {
 				log.Error(createSql, " create normal index failed ", err)
 				LogError(logDir, "NormalIdxCreateFailed", createSql, err)
@@ -411,37 +414,3 @@ func (tb *Table) PrintDbFunc(logDir string) { //转储源数据库的函数、�
 		LogError(logDir, "FuncObject", dbRet, err)
 	}
 }
-
-// 单线程，不使用goroutine创建索引
-//func (tb *Table) IdxCreate(logDir string) (result []string) {
-//	startTime := time.Now()
-//	failedCount := 0
-//	id := 0
-//	// 查询索引、主键、唯一约束等信息，批量生成创建语句
-//	sqlStr := fmt.Sprintf("SELECT (CASE WHEN C.CONSTRAINT_TYPE = 'P' OR C.CONSTRAINT_TYPE = 'R' THEN 'ALTER TABLE `' || T.TABLE_NAME || '` ADD CONSTRAINT ' ||'`'||T.INDEX_NAME||'`' || (CASE WHEN C.CONSTRAINT_TYPE = 'P' THEN ' PRIMARY KEY (' ELSE ' FOREIGN KEY (' END) || listagg(T.COLUMN_NAME,',') within group(order by T.COLUMN_position) || ');' ELSE 'CREATE ' || (CASE WHEN I.UNIQUENESS = 'UNIQUE' THEN I.UNIQUENESS || ' ' ELSE CASE WHEN I.INDEX_TYPE = 'NORMAL' THEN '' ELSE  I.INDEX_TYPE || ' '  END END) || 'INDEX ' || '`'||T.INDEX_NAME||'`' || ' ON ' || T.TABLE_NAME || '(' ||listagg(T.COLUMN_NAME,',') within group(order by T.COLUMN_position) || ');' END) SQL_CMD FROM USER_IND_COLUMNS T, USER_INDEXES I, USER_CONSTRAINTS C WHERE T.INDEX_NAME = I.INDEX_NAME  AND T.INDEX_NAME = C.CONSTRAINT_NAME(+)  and i.index_type != 'FUNCTION-BASED NORMAL'  GROUP BY T.TABLE_NAME, T.INDEX_NAME, I.UNIQUENESS, I.INDEX_TYPE,C.CONSTRAINT_TYPE",tableName)
-//	//fmt.Println(sql)
-//	rows, err := srcDb.Query(sqlStr)
-//	if err != nil {
-//		log.Error(err)
-//	}
-//	defer rows.Close()
-//	// 从sql结果集遍历，获取到创建语句
-//	for rows.Next() {
-//		id += 1
-//		if err := rows.Scan(&tb.destIdxSql); err != nil {
-//			log.Error(err)
-//		}
-//		// 创建目标索引，主键、其余约束
-//		log.Info(fmt.Sprintf("%v ProcessingID %s %s", time.Now().Format("2006-01-02 15:04:05.000000"), strconv.Itoa(id), tb.destIdxSql))
-//		if _, err = destDb.Exec(tb.destIdxSql); err != nil {
-//			log.Error("index ", tb.destIdxSql, " create index failed ", err)
-//			LogError(logDir, "idxCreateFailed", tb.destIdxSql, err)
-//			failedCount += 1
-//		}
-//	}
-//	endTime := time.Now()
-//	cost := time.Since(startTime)
-//	log.Info("index  count ", id)
-//	result = append(result, "Index", startTime.Format("2006-01-02 15:04:05.000000"), endTime.Format("2006-01-02 15:04:05.000000"), strconv.Itoa(failedCount), cost.String())
-//	return result
-//}

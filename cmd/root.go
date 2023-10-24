@@ -8,10 +8,12 @@ import (
 	"io"
 	"math"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -42,6 +44,10 @@ var rootCmd = &cobra.Command{
 }
 
 func startDataTransfer(connStr *connect.DbConnStr) {
+	// 自动侦测终端是否输入Ctrl+c,若按下,主动关闭目标数据库剩余连接
+	exitChan := make(chan os.Signal)
+	signal.Notify(exitChan, os.Interrupt, os.Kill, syscall.SIGTERM)
+	go exitHandle(exitChan)
 	// 创建运行日志目录
 	logDir, _ := filepath.Abs(CreateDateDir(""))
 	// 输出调用文件以及方法位置
@@ -200,10 +206,6 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 func fetchTableMap(pageSize int, excludeTable []string) (tableMap map[string][]string) {
 	var tableNumber int // 表总数
 	var sqlStr string   // 查询源库获取要迁移的表名
-	// 声明一个等待组
-	var wg sync.WaitGroup
-	// 使用互斥锁 sync.Mutex才能使用并发的goroutine
-	mutex := &sync.Mutex{}
 	log.Info("exclude table ", excludeTable)
 	// 如果配置文件中exclude存在表名，使用not in排除掉这些表，否则获取到所有表名
 	if excludeTable != nil {
@@ -232,37 +234,27 @@ func fetchTableMap(pageSize int, excludeTable []string) (tableMap map[string][]s
 	tableMap = make(map[string][]string)
 	for rows.Next() {
 		tableNumber++
-		// 每一个任务开始时, 将等待组增加1
-		wg.Add(1)
 		var sqlFullList []string
 		err = rows.Scan(&tableName)
 		if err != nil {
 			log.Error(err)
 		}
-		// 使用多个并发的goroutine调用函数获取该表用来执行的sql语句
+		// 单线程调用prepareSqlStr函数获取该表用来执行的sql语句
 		log.Info(time.Now().Format("2006-01-02 15:04:05.000000"), "ID[", tableNumber, "] ", "prepare ", tableName, " TableMap")
-		go func(tableName string, sqlFullList []string) {
-			// 使用defer, 表示函数完成时将等待组值减1
-			defer wg.Done()
-			// !tableOnly即没有指定-t选项，生成全库的分页查询语句，否则就是指定了-t选项,sqlFullList仅追加空字符串
-			if !tableOnly {
-				sqlFullList = prepareSqlStr(tableName, pageSize)
-				if len(sqlFullList) == 0 { // 如果表没有数据，手动append一条1=0的sql语句,否则该表不会被创建，compareDb运行也会不准确
-					sqlFullList = append(sqlFullList, fmt.Sprintf("select * from \"%s\" where 1=0", tableName))
-				}
-			} else {
-				sqlFullList = append(sqlFullList, "")
+		// !tableOnly即没有指定-t选项，调用生成全库的分页查询语句，否则就是指定了-t选项,sqlFullList仅追加空字符串按表一个一个获取
+		if !tableOnly {
+			sqlFullList = prepareSqlStr(tableName, pageSize)
+			if len(sqlFullList) == 0 { // 如果表没有数据，手动append一条1=0的sql语句,否则该表不会被创建，compareDb运行也会不准确
+				sqlFullList = append(sqlFullList, fmt.Sprintf("select * from \"%s\" where 1=0", tableName))
 			}
-			// 追加到内层的切片，sql全表扫描语句或者分页查询语句，例如tableMap[test1]="select * from test1"
-			for i := 0; i < len(sqlFullList); i++ {
-				mutex.Lock()
-				tableMap[tableName] = append(tableMap[tableName], sqlFullList[i])
-				mutex.Unlock()
-			}
-		}(tableName, sqlFullList)
+		} else {
+			sqlFullList = append(sqlFullList, "")
+		}
+		// 追加到内层的切片，遍历sql语句切片，一个个追加到map，即sql全表扫描语句或者分页查询语句，例如tableMap[test1]="select * from test1"
+		for i := 0; i < len(sqlFullList); i++ {
+			tableMap[tableName] = append(tableMap[tableName], sqlFullList[i])
+		}
 	}
-	// 等待所有的任务完成
-	wg.Wait()
 	return tableMap
 }
 
