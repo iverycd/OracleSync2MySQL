@@ -241,6 +241,14 @@ OracleSync2MySQL.exe  --config example.yml onlyData -s
 ```
 
 ## change history
+### v0.0.9
+2023-11-27
+-s自定义迁移的时候，读取配置文件中的表名并统一转为大小
+
+### v0.0.8
+2023-10-24
+优化fetchTableMap的方法
+
 ### v0.0.7
 2023-08-31
 修改迁移数据时的insert方法，insert语句由之前的insert into tableName values改成了insert into tableName(col1,col2) values。修复timestamp类型转换文本不正确的问题

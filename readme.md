@@ -253,6 +253,14 @@ OracleSync2MySQL.exe  --config example.yml onlyData -s
 ```
 
 ## change history
+### v0.0.9
+2023-11-27
+fix -s mode with upper table name
+
+### v0.0.8
+2023-10-24
+modify fetchTableMap
+
 ### v0.0.7
 2023-08-31
 When modifying the insert method for migrating data, the insert statement has been changed from the previous insert into tableName values to insert into tableName (col1, col2) values. Fix the issue of incorrect timestamp type conversion text
