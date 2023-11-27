@@ -102,7 +102,7 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	endTbl := time.Now()
 	tableCost := time.Since(startTbl)
 	// 创建表完毕
-	log.Info("Table structure synced from MySQL to PostgreSQL ,Source Table Total ", tableCount, " Failed Total ", strconv.Itoa(failedCount))
+	log.Info("Table structure synced finish ,Source Table Total ", tableCount, " Failed Total ", strconv.Itoa(failedCount))
 	tabRet = append(tabRet, "Table", startTbl.Format("2006-01-02 15:04:05.000000"), endTbl.Format("2006-01-02 15:04:05.000000"), strconv.Itoa(failedCount), tableCost.String())
 	fmt.Println("Table Create finish elapsed time ", tableCost)
 	// 创建表之后，开始准备迁移表行数据
@@ -276,11 +276,13 @@ func preMigData(tableName string, sqlFullSplit []string) (dbCol []string, dbColT
 		sqlCol = "select * from " + "\"" + tableName + "\"" + " where 1=0"
 	}
 	rows, err := srcDb.Query(sqlCol) //源库 SQL查询语句
-	defer rows.Close()
+	//defer rows.Close()
 	if err != nil {
 		log.Error(fmt.Sprintf("Query "+sqlCol+" failed,\nerr:%v\n", err))
+		tableNotExist = true
 		return
 	}
+	defer rows.Close()
 	//获取列名，这是字符串切片
 	columns, err := rows.Columns()
 	if err != nil {

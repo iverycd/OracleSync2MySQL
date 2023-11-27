@@ -56,12 +56,19 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 	tableCount += 1
 	// 使用goroutine并发的创建多个表
 	var colTotal int
+	if selFromYml { //-s自定义迁移表的时候，统一把yml文件的表名转为大写(否则查询语句的表名都是小写)，原因是map键值对(key:value)，viper这个库始终把key的值转为小写的值
+		tblName = strings.ToUpper(tblName)
+	}
 	createTblSql := "create table " + fmt.Sprintf("`") + tblName + fmt.Sprintf("`") + "("
 	// 查询当前表总共有多少个列字段
 	colTotalSql := fmt.Sprintf("select count(*) from user_tab_columns where  table_name='%s'", tblName)
 	err := srcDb.QueryRow(colTotalSql).Scan(&colTotal)
 	if err != nil {
 		log.Error(err)
+	}
+	if colTotal == 0 {
+		log.Error("Table ", tblName, " not exist and not create table")
+		return
 	}
 	// 查询源库表结构
 	sqlStr := fmt.Sprintf("SELECT A.COLUMN_NAME,A.DATA_TYPE,A.CHAR_LENGTH,case when A.NULLABLE ='Y' THEN 'YES' ELSE 'NO' END as isnull,A.DATA_DEFAULT,case when A.DATA_PRECISION is null then -1 else  A.DATA_PRECISION end DATA_PRECISION,case when A.DATA_SCALE is null then -1 when A.DATA_SCALE >30 then least(A.DATA_PRECISION,30)-1 else  A.DATA_SCALE end DATA_SCALE, nvl(B.COMMENTS,'null') COMMENTS,case when a.AVG_COL_LEN is null then -1 else a.AVG_COL_LEN end AVG_COL_LEN,COLUMN_ID FROM USER_TAB_COLUMNS A LEFT JOIN USER_COL_COMMENTS B ON A.TABLE_NAME=B.TABLE_NAME AND A.COLUMN_NAME=B.COLUMN_NAME WHERE A.TABLE_NAME='%s' ORDER BY COLUMN_ID", tblName)
