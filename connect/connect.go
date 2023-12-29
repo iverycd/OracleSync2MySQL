@@ -11,4 +11,5 @@ type DbConnStr struct {
 	DestUserName string
 	DestPassword string
 	DestDatabase string
+	DestParams   map[string]string
 }

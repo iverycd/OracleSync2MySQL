@@ -18,3 +18,4 @@ tables:
     - select * from test
 exclude:
   operationlog
+params: { charset:utf8, maxAllowedPacket:0 }

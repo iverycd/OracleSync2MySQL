@@ -6,9 +6,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/godror/godror"
 	"github.com/spf13/viper"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -33,6 +35,7 @@ func getConn() (connStr *connect.DbConnStr) {
 	connStr.DestUserName = viper.GetString("dest.username")
 	connStr.DestPassword = viper.GetString("dest.password")
 	connStr.DestDatabase = viper.GetString("dest.database")
+	connStr.DestParams = viper.GetStringMapString("dest.params")
 	return connStr
 }
 
@@ -73,12 +76,27 @@ func PrepareDest(connStr *connect.DbConnStr) {
 	destPassword := connStr.DestPassword
 	destDatabase := connStr.DestDatabase
 	destPort := connStr.DestPort
-	destConn := fmt.Sprintf("%s:%s@tcp(%s:%v)/%s?charset=utf8&maxAllowedPacket=0", destUserName, destPassword, destHost, destPort, destDatabase)
+	//destConn := fmt.Sprintf("%s:%s@tcp(%s:%v)/%s?charset=utf8&maxAllowedPacket=0", destUserName, destPassword, destHost, destPort, destDatabase)
+	destConf := mysql.NewConfig()
+	destConf.DBName = destDatabase
+	destConf.User = destUserName
+	destConf.Passwd = destPassword
+	destConf.Net = "tcp"
+	destConf.Addr = net.JoinHostPort(destHost, strconv.Itoa(destPort))
+	destConf.ParseTime = true
+	destConf.Loc = time.Local
+	//destConf.Params = map[string]string{"charset": "utf8", "maxAllowedPacket": "0"}
+	if connStr.DestParams != nil && len(connStr.DestParams) > 0 {
+		destConf.Params = connStr.DestParams
+	}
 	var err error
-	destDb, err = sql.Open("mysql", destConn)
+	destDriver, err := mysql.NewConnector(destConf)
 	if err != nil {
 		log.Fatal("please check MySQL yml file", err)
 	}
+	//destDb, err = sql.Open("mysql", destConn)
+	destDb = sql.OpenDB(destDriver)
+
 	c := destDb.Ping()
 	if c != nil {
 		log.Fatal("connect target MySQL failed ", c)
