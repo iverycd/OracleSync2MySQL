@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"database/sql"
 	"fmt"
+	rotatelogs "github.com/lestrrat-go/file-rotatelogs"
 	"github.com/mitchellh/go-homedir"
-	"io"
+	"github.com/rifflock/lfshook"
 	"math"
 	"os"
 	"os/signal"
@@ -24,7 +25,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-var log = logrus.New()
+// var log = logrus.New()
+var log *logrus.Logger
 var cfgFile string
 var selFromYml bool
 
@@ -48,22 +50,9 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	exitChan := make(chan os.Signal)
 	signal.Notify(exitChan, os.Interrupt, os.Kill, syscall.SIGTERM)
 	go exitHandle(exitChan)
-	// 创建运行日志目录
-	logDir, _ := filepath.Abs(CreateDateDir(""))
-	// 输出调用文件以及方法位置
-	log.SetReportCaller(true)
-	f, err := os.OpenFile(logDir+"/"+"run.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() {
-		if err := f.Close(); err != nil {
-			log.Fatal(err)
-		}
-	}()
-	// log信息重定向到平面文件
-	multiWriter := io.MultiWriter(os.Stdout, f)
-	log.SetOutput(multiWriter)
+
+	logDir := newLogger() //初始化logrus日志和定义日志文件切割
+
 	start := time.Now()
 	// map结构，表名以及该表用来迁移查询源库的语句
 	var tableMap map[string][]string
@@ -198,6 +187,67 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	// 总耗时
 	cost := time.Since(start)
 	log.Info(fmt.Sprintf("All complete totalTime %s The Report Dir %s", cost, logDir))
+}
+
+func newLogger() string {
+	// 创建运行日志目录
+	logDir, _ := filepath.Abs(CreateDateDir(""))
+	if log != nil {
+		return logDir
+	}
+
+	infoLogPath := filepath.Join(logDir, "run.log")
+	// 创建rotatelogs的Logger实例
+	infoRotator, err := rotatelogs.New(
+		infoLogPath+".%Y%m%d%H%M",
+		rotatelogs.WithLinkName(infoLogPath),      // 生成软链接指向最新日志文件
+		rotatelogs.WithMaxAge(24*time.Hour),       // 日志文件最大保留时间
+		rotatelogs.WithRotationTime(time.Hour),    // 日志切割时间间隔
+		rotatelogs.WithRotationSize(50*1024*1024), // 日志文件最大大小（例如50MB）
+	)
+	if err != nil {
+		fmt.Printf("Failed to create rotatelogs logger: %v", err)
+		return logDir
+	}
+
+	// 为 Error 级别日志设置 rotatelogs
+	errorLogPath := filepath.Join(logDir, "run_error.log")
+	errorRotator, err := rotatelogs.New(
+		errorLogPath+".%Y%m%d%H%M",
+		rotatelogs.WithLinkName(errorLogPath),
+		rotatelogs.WithMaxAge(7*24*time.Hour),
+		rotatelogs.WithRotationTime(24*time.Hour),
+		//rotatelogs.WithRotationSize(10*1024*1024),
+	)
+	if err != nil {
+		fmt.Printf("failed to create rotatelogs for error: %v", err)
+	}
+
+	// lfshook 决定哪些日志级别可用日志分割
+	writeMap := lfshook.WriterMap{
+		//logrus.PanicLevel: rl,
+		//logrus.FatalLevel: rl,
+		logrus.ErrorLevel: errorRotator,
+		//logrus.WarnLevel:  rl,
+		logrus.InfoLevel: infoRotator,
+		//logrus.DebugLevel: rl,
+	}
+
+	// 配置 lfshook
+	hook := lfshook.NewHook(writeMap, &logrus.TextFormatter{
+		// 设置日期格式
+		TimestampFormat: "2006.01.02 - 15:04:05",
+	})
+
+	log = logrus.New()
+	// 输出调用文件以及方法位置
+	log.SetReportCaller(true)
+	// 设置将日志输出到标准输出（默认的输出为stderr,标准错误）
+	log.SetOutput(os.Stdout)
+	log.AddHook(hook)
+
+	fmt.Println(infoLogPath)
+	return logDir
 }
 
 // 自动对表分析，然后生成每个表用来迁移查询源库SQL的集合(全表查询或者分页查询)
