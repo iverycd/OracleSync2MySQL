@@ -194,7 +194,11 @@ func cleanDBconn() {
 	if err != nil {
 		log.Error(err)
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		if err := rows.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}(rows)
 	for rows.Next() {
 		var id string
 		err = rows.Scan(&id)

@@ -186,7 +186,11 @@ func (tb *Table) IdxCreate(logDir string, tableName string, ch chan struct{}, id
 	if err != nil {
 		log.Error(err)
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		if err := rows.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}(rows)
 	// 从sql结果集遍历，获取到创建语句
 	for rows.Next() {
 		if err := rows.Scan(&destIdxSql); err != nil {
@@ -214,7 +218,11 @@ func (tb *Table) SeqCreate(logDir string) (ret []string) {
 	if err != nil {
 		log.Error(err)
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		if err := rows.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}(rows)
 	idx := 0
 	for rows.Next() {
 		idx += 1
@@ -268,7 +276,11 @@ func (tb *Table) FkCreate(logDir string) (ret []string) {
 	if err != nil {
 		log.Error(err)
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		if err := rows.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}(rows)
 	idx := 0
 	for rows.Next() {
 		idx += 1

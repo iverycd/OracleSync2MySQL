@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"database/sql"
 	"fmt"
 	"github.com/liushuochen/gotable"
 	"github.com/spf13/viper"
@@ -113,13 +114,21 @@ var onlyDataCmd = &cobra.Command{
 		log.Info("running SourceDB check connect")
 		// 生成源库数据库连接
 		PrepareSrc(connStr)
-		defer srcDb.Close()
+		defer func(srcDb *sql.DB) {
+			if err := srcDb.Close(); err != nil {
+				log.Fatal(err)
+			}
+		}(srcDb)
 		// 每页的分页记录数,仅全库迁移时有效
 		pageSize := viper.GetInt("pageSize")
 		log.Info("running TargetDB check connect")
 		// 生成目标库的数据库连接
 		PrepareDest(connStr)
-		defer destDb.Close()
+		defer func(destDb *sql.DB) {
+			if err := destDb.Close(); err != nil {
+				log.Fatal(err)
+			}
+		}(destDb)
 		// 以下是迁移数据前的准备工作，获取要迁移的表名以及该表查询源库的sql语句(如果有主键生成该表的分页查询切片集合，没有主键的统一是全表查询sql)
 		if selFromYml { // 如果用了-s选项，从配置文件中获取表名以及sql语句
 			tableMap = viper.GetStringMapStringSlice("tables")

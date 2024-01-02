@@ -61,13 +61,21 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	log.Info("running SourceDB check connect")
 	// 生成源库数据库连接
 	PrepareSrc(connStr)
-	defer srcDb.Close()
+	defer func(srcDb *sql.DB) {
+		if err := srcDb.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}(srcDb)
 	// 每页的分页记录数,仅全库迁移时有效
 	pageSize := viper.GetInt("pageSize")
 	log.Info("running TargetDB check connect")
 	// 生成目标库的数据库连接
 	PrepareDest(connStr)
-	defer destDb.Close()
+	defer func(destDb *sql.DB) {
+		if err := destDb.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}(destDb)
 	// 以下是迁移数据前的准备工作，获取要迁移的表名以及该表查询源库的sql语句(如果有主键生成该表的分页查询切片集合，没有主键的统一是全表查询sql)
 	if selFromYml { // 如果用了-s选项，从配置文件中获取表名以及sql语句
 		tableMap = viper.GetStringMapStringSlice("tables")
@@ -169,7 +177,10 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 		return
 	}
 	ymlConfig := []string{connStr.SrcHost + "-" + connStr.SrcUserName, connStr.DestHost + "-" + connStr.DestDatabase, strconv.Itoa(maxParallel), strconv.Itoa(pageSize), strconv.Itoa(len(excludeTab))}
-	tblConfig.AddRow(ymlConfig)
+	err = tblConfig.AddRow(ymlConfig)
+	if err != nil {
+		fmt.Println("tblConfig Add row failed: ", err.Error())
+	}
 	fmt.Println(tblConfig)
 	// 输出迁移摘要
 	table, err := gotable.Create("Object", "BeginTime", "EndTime", "FailedTotal", "ElapsedTime")
@@ -225,11 +236,11 @@ func newLogger() string {
 
 	// lfshook 决定哪些日志级别可用日志分割
 	writeMap := lfshook.WriterMap{
-		//logrus.PanicLevel: rl,
-		//logrus.FatalLevel: rl,
+		logrus.PanicLevel: errorRotator,
+		logrus.FatalLevel: errorRotator,
 		logrus.ErrorLevel: errorRotator,
-		//logrus.WarnLevel:  rl,
-		logrus.InfoLevel: infoRotator,
+		logrus.WarnLevel:  infoRotator,
+		logrus.InfoLevel:  infoRotator,
 		//logrus.DebugLevel: rl,
 	}
 
@@ -274,7 +285,11 @@ func fetchTableMap(pageSize int, excludeTable []string) (tableMap map[string][]s
 	}
 	// 查询下源库总共的表，获取到表名
 	rows, err := srcDb.Query(sqlStr)
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		if err := rows.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}(rows)
 	if err != nil {
 		log.Error(fmt.Sprintf("Query "+sqlStr+" failed,\nerr:%v\n", err))
 		return
