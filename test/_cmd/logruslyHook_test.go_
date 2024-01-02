@@ -1,0 +1,156 @@
+package _cmd
+
+import (
+	"fmt"
+	rotatelogs "github.com/lestrrat-go/file-rotatelogs"
+	"github.com/rifflock/lfshook"
+	"github.com/sirupsen/logrus"
+	"math/rand"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+var log *logrus.Logger
+
+// 测试日志文件是否按大小进行切割
+func TestLogRotationBySize(t *testing.T) {
+	logDir := newLogger()
+	fmt.Println(logDir)
+	log.Info("running SourceDB check connect")
+
+	// 生成足够的日志以触发文件切割
+	for i := 0; i < 100000; i++ {
+		g := generateRandomString(33)
+		fmt.Printf("Test os.Stdout log entry %d,%s", i, g)
+		log.Infof("Test info log entry %d,%s", i, g)
+		log.Errorf("Test error log entry %d,%s", i, g)
+	}
+
+	// 检查是否创建了多个日志文件
+	//files, err := os.ReadDir(logDir)
+	//if err != nil {
+	//	t.Fatalf("Failed to list log directory: %v", err)
+	//}
+
+	// 至少应该有两个日志文件
+	//if len(files) < 2 {
+	//	t.Errorf("Expected multiple log files due to rotation, but found %d", len(files))
+	//}
+
+	//清理测试日志文件
+	//cleanupTestLogs(logDir)
+}
+
+// 清理测试生成的日志文件
+func cleanupTestLogs(dir string) {
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if strings.Contains(path, "run") {
+			os.Remove(path)
+		}
+		return nil
+	})
+}
+
+// CreateDateDir 根据当前日期来创建文件夹
+func CreateDateDir(basePath string) string {
+	folderName := "log/" + time.Now().Format("2006_01_02_15_04_05")
+	folderPath := filepath.Join(basePath, folderName)
+	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
+		// 必须分成两步
+		// 先创建文件夹
+		err := os.MkdirAll(folderPath, 0777) //级联创建目录
+		if err != nil {
+			fmt.Println("create directory log failed ", err)
+		}
+		// 再修改权限
+		err = os.Chmod(folderPath, 0777)
+		if err != nil {
+			fmt.Println("chmod directory log failed ", err)
+		}
+	}
+	return folderPath
+}
+
+func newLogger() string {
+	// 创建运行日志目录
+	logDir, _ := filepath.Abs(CreateDateDir(""))
+	if log != nil {
+		return logDir
+	}
+
+	logFilePath := logDir + "/" + "run.log"
+	// 创建rotatelogs的Logger实例
+	rl, err := rotatelogs.New(
+		logFilePath+".%Y%m%d%H%M",
+		rotatelogs.WithLinkName(logFilePath),   // 生成软链接指向最新日志文件
+		rotatelogs.WithMaxAge(24*time.Hour),    // 日志文件最大保留时间
+		rotatelogs.WithRotationTime(time.Hour), // 日志切割时间间隔
+		rotatelogs.WithRotationSize(1024*1024), // 日志文件最大大小（例如50MB）
+	)
+	if err != nil {
+		fmt.Println("Failed to create rotatelogs logger:", err)
+		return logDir
+	}
+
+	// 为 Error 级别日志设置 rotatelogs
+	errorLogPath := filepath.Join(logDir, "run_error.log")
+	errorRotator, err := rotatelogs.New(
+		errorLogPath+".%Y%m%d%H%M",
+		rotatelogs.WithLinkName(errorLogPath),
+		rotatelogs.WithMaxAge(7*24*time.Hour),
+		rotatelogs.WithRotationTime(24*time.Hour),
+		//rotatelogs.WithRotationSize(10*1024*1024),
+	)
+	if err != nil {
+		fmt.Printf("failed to create rotatelogs for error: %v", err)
+	}
+
+	// lfshook 决定哪些日志级别可用日志分割
+	writeMap := lfshook.WriterMap{
+		//logrus.PanicLevel: rl,
+		//logrus.FatalLevel: rl,
+		logrus.ErrorLevel: errorRotator,
+		//logrus.WarnLevel:  rl,
+		logrus.InfoLevel: rl,
+		//logrus.DebugLevel: rl,
+	}
+
+	//logrus.AddHook(lfshook.NewHook(
+	//	lfshook.WriterMap{
+	//		logrus.InfoLevel:  rl,
+	//		logrus.ErrorLevel: rl,
+	//	},
+	//	&logrus.TextFormatter{},
+	//))
+
+	// 配置 lfshook
+	hook := lfshook.NewHook(writeMap, &logrus.TextFormatter{
+		// 设置日期格式
+		TimestampFormat: "2006.01.02 - 15:04:05",
+	})
+
+	log = logrus.New()
+	log.SetReportCaller(true)
+	//multiWriter := io.MultiWriter(os.Stdout, rl)
+	log.SetOutput(os.Stdout)
+	fmt.Println(logFilePath)
+	log.AddHook(hook)
+
+	return logDir
+}
+
+// generateRandomString 生成长度为 n 的随机字符串
+func generateRandomString(n int) string {
+	charset := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	var seededRand *rand.Rand = rand.New(
+		rand.NewSource(time.Now().UnixNano()))
+
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = charset[seededRand.Intn(len(charset))]
+	}
+	return string(b)
+}
