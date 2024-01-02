@@ -5,9 +5,6 @@ import (
 	"github.com/liushuochen/gotable"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"io"
-	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -40,20 +37,21 @@ var compareDbCmd = &cobra.Command{
 		} else { // 不指定-s选项，查询源库所有表名
 			tableMap = fetchTableMap(pageSize, excludeTab)
 		}
+		newLogger() //初始化logrus日志和定义日志文件切割
 		// 创建运行日志目录
-		logDir, _ := filepath.Abs(CreateDateDir(""))
-		f, err := os.OpenFile(logDir+"/"+"run.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer func() {
-			if err := f.Close(); err != nil {
-				log.Fatal(err) // 或设置到函数返回值中
-			}
-		}()
-		// log信息重定向到平面文件
-		multiWriter := io.MultiWriter(os.Stdout, f)
-		log.SetOutput(multiWriter)
+		//logDir, _ := filepath.Abs(CreateDateDir(""))
+		//f, err := os.OpenFile(logDir+"/"+"run.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
+		//if err != nil {
+		//	log.Fatal(err)
+		//}
+		//defer func() {
+		//	if err := f.Close(); err != nil {
+		//		log.Fatal(err) // 或设置到函数返回值中
+		//	}
+		//}()
+		//// log信息重定向到平面文件
+		//multiWriter := io.MultiWriter(os.Stdout, f)
+		//log.SetOutput(multiWriter)
 		// 以下开始调用比对表行数的方法
 		start := time.Now()
 		// 用于控制协程goroutine运行时候的并发数,例如3个一批，3个一批的goroutine并发运行

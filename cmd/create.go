@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"github.com/liushuochen/gotable"
 	"github.com/spf13/viper"
-	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -45,20 +43,22 @@ var createTableCmd = &cobra.Command{
 		} else { // 不指定-s选项，查询源库所有表名
 			tableMap = fetchTableMap(pageSize, excludeTab)
 		}
+		logDir := newLogger() //初始化logrus日志和定义日志文件切割
+		//logDir := newLogger() //初始化logrus日志和定义日志文件切割
 		// 创建运行日志目录
-		logDir, _ := filepath.Abs(CreateDateDir(""))
-		f, err := os.OpenFile(logDir+"/"+"run.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer func() {
-			if err := f.Close(); err != nil {
-				log.Fatal(err) // 或设置到函数返回值中
-			}
-		}()
-		// log信息重定向到平面文件
-		multiWriter := io.MultiWriter(os.Stdout, f)
-		log.SetOutput(multiWriter)
+		//logDir, _ := filepath.Abs(CreateDateDir(""))
+		//f, err := os.OpenFile(logDir+"/"+"run.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
+		//if err != nil {
+		//	log.Fatal(err)
+		//}
+		//defer func() {
+		//	if err := f.Close(); err != nil {
+		//		log.Fatal(err) // 或设置到函数返回值中
+		//	}
+		//}()
+		//// log信息重定向到平面文件
+		//multiWriter := io.MultiWriter(os.Stdout, f)
+		//log.SetOutput(multiWriter)
 		// 实例初始化，调用接口中创建目标表的方法
 		var db Database
 		start := time.Now()
@@ -91,20 +91,20 @@ var onlyDataCmd = &cobra.Command{
 		connStr := getConn()
 		// 创建运行日志目录
 		logDir, _ := filepath.Abs(CreateDateDir(""))
-		// 输出调用文件以及方法位置
-		log.SetReportCaller(true)
-		f, err := os.OpenFile(logDir+"/"+"run.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer func() {
-			if err := f.Close(); err != nil {
-				log.Fatal(err)
-			}
-		}()
-		// log信息重定向到平面文件
-		multiWriter := io.MultiWriter(os.Stdout, f)
-		log.SetOutput(multiWriter)
+		//// 输出调用文件以及方法位置
+		//log.SetReportCaller(true)
+		//f, err := os.OpenFile(logDir+"/"+"run.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
+		//if err != nil {
+		//	log.Fatal(err)
+		//}
+		//defer func() {
+		//	if err := f.Close(); err != nil {
+		//		log.Fatal(err)
+		//	}
+		//}()
+		//// log信息重定向到平面文件
+		//multiWriter := io.MultiWriter(os.Stdout, f)
+		//log.SetOutput(multiWriter)
 		start := time.Now()
 		// map结构，表名以及该表用来迁移查询源库的语句
 		var tableMap map[string][]string
