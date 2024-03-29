@@ -7,7 +7,7 @@ src:
 dest:
   host: 192.168.1.37
   port: 3306
-  database: test_polar
+  database: test
   username: root
   password: 11111
 pageSize: 100000

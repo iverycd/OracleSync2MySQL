@@ -330,7 +330,7 @@ func prepareSqlStr(tableName string, pageSize int) (sqlList []string) {
 			startNum = ((curStartPage - 1) * pageSize) + 1
 		}
 		endNum := startNum + pageSize - 1
-		sqlStr = fmt.Sprintf("SELECT %s FROM (SELECT A.*, ROWNUM RN FROM (SELECT * FROM \"%s\") A WHERE ROWNUM <= %s) WHERE RN >=%s", colNameFull, tableName, strconv.Itoa(endNum), strconv.Itoa(startNum))
+		sqlStr = fmt.Sprintf("SELECT %s FROM (SELECT A.*, ROWNUM RNcolumn FROM (SELECT * FROM \"%s\") A WHERE ROWNUM <= %s) WHERE RNcolumn >=%s", colNameFull, tableName, strconv.Itoa(endNum), strconv.Itoa(startNum))
 		sqlList = append(sqlList, sqlStr)
 	}
 	return sqlList
