@@ -154,8 +154,13 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 		default:
 			newTable.destType = newTable.dataType
 		}
+		// 列注释,每个列字段的注释使用comment 注释的文字进行拼接
+		colComment := ""
+		if newTable.columnComment != "null" {
+			colComment = fmt.Sprintf(" comment '%s'", newTable.columnComment)
+		}
 		// 在目标库创建的语句
-		createTblSql += fmt.Sprintf("`%s` %s %s %s,", newTable.columnName, newTable.destType, newTable.destNullable, newTable.destDefault)
+		createTblSql += fmt.Sprintf("`%s` %s %s %s %s,", newTable.columnName, newTable.destType, newTable.destNullable, newTable.destDefault, colComment)
 		if newTable.ordinalPosition == colTotal {
 			createTblSql = createTblSql[:len(createTblSql)-1] + ")" // 最后一个列字段结尾去掉逗号,并且加上语句的右括号
 		}
