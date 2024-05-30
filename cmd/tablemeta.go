@@ -82,8 +82,8 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 		if err := rows.Scan(&newTable.columnName, &newTable.dataType, &newTable.characterMaximumLength, &newTable.isNullable, &colDefaultValue, &newTable.numericPrecision, &newTable.numericScale, &newTable.columnComment, &newTable.avgColLen, &newTable.ordinalPosition); err != nil {
 			log.Error(err)
 		}
-		// 判断下默认值是否是null，go语言中不能直接把null值转成字符串
-		if !colDefaultValue.Valid {
+		// 判断colDefaultValue的长度，如果len大于0说明就是有非null的默认值，如果len为0说明在源库的默认值就是null
+		if len([]rune(colDefaultValue.String)) > 0 {
 			newTable.columnDefault = colDefaultValue.String
 		} else {
 			newTable.columnDefault = "null"
