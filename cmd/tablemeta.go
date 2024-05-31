@@ -82,8 +82,8 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 		if err := rows.Scan(&newTable.columnName, &newTable.dataType, &newTable.characterMaximumLength, &newTable.isNullable, &colDefaultValue, &newTable.numericPrecision, &newTable.numericScale, &newTable.columnComment, &newTable.avgColLen, &newTable.ordinalPosition); err != nil {
 			log.Error(err)
 		}
-		// 判断下默认值是否是null，go语言中不能直接把null值转成字符串
-		if !colDefaultValue.Valid {
+		// 判断colDefaultValue的长度，如果len大于0说明就是有非null的默认值，如果len为0说明在源库的默认值就是null
+		if len([]rune(colDefaultValue.String)) > 0 {
 			newTable.columnDefault = colDefaultValue.String
 		} else {
 			newTable.columnDefault = "null"
@@ -154,8 +154,13 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 		default:
 			newTable.destType = newTable.dataType
 		}
+		// 列注释,每个列字段的注释使用comment 注释的文字进行拼接
+		colComment := ""
+		if newTable.columnComment != "null" {
+			colComment = fmt.Sprintf(" comment '%s'", newTable.columnComment)
+		}
 		// 在目标库创建的语句
-		createTblSql += fmt.Sprintf("`%s` %s %s %s,", newTable.columnName, newTable.destType, newTable.destNullable, newTable.destDefault)
+		createTblSql += fmt.Sprintf("`%s` %s %s %s %s,", newTable.columnName, newTable.destType, newTable.destNullable, newTable.destDefault, colComment)
 		if newTable.ordinalPosition == colTotal {
 			createTblSql = createTblSql[:len(createTblSql)-1] + ")" // 最后一个列字段结尾去掉逗号,并且加上语句的右括号
 		}
@@ -186,11 +191,7 @@ func (tb *Table) IdxCreate(logDir string, tableName string, ch chan struct{}, id
 	if err != nil {
 		log.Error(err)
 	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			log.Fatal(err)
-		}
-	}(rows)
+	defer rows.Close()
 	// 从sql结果集遍历，获取到创建语句
 	for rows.Next() {
 		if err := rows.Scan(&destIdxSql); err != nil {
@@ -218,11 +219,7 @@ func (tb *Table) SeqCreate(logDir string) (ret []string) {
 	if err != nil {
 		log.Error(err)
 	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			log.Fatal(err)
-		}
-	}(rows)
+	defer rows.Close()
 	idx := 0
 	for rows.Next() {
 		idx += 1
@@ -276,11 +273,7 @@ func (tb *Table) FkCreate(logDir string) (ret []string) {
 	if err != nil {
 		log.Error(err)
 	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			log.Fatal(err)
-		}
-	}(rows)
+	defer rows.Close()
 	idx := 0
 	for rows.Next() {
 		idx += 1

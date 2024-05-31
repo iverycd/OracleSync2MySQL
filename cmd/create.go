@@ -1,10 +1,11 @@
 package cmd
 
 import (
-	"database/sql"
 	"fmt"
 	"github.com/liushuochen/gotable"
 	"github.com/spf13/viper"
+	"io"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -44,22 +45,20 @@ var createTableCmd = &cobra.Command{
 		} else { // 不指定-s选项，查询源库所有表名
 			tableMap = fetchTableMap(pageSize, excludeTab)
 		}
-		logDir := newLogger() //初始化logrus日志和定义日志文件切割
-		//logDir := newLogger() //初始化logrus日志和定义日志文件切割
 		// 创建运行日志目录
-		//logDir, _ := filepath.Abs(CreateDateDir(""))
-		//f, err := os.OpenFile(logDir+"/"+"run.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
-		//if err != nil {
-		//	log.Fatal(err)
-		//}
-		//defer func() {
-		//	if err := f.Close(); err != nil {
-		//		log.Fatal(err) // 或设置到函数返回值中
-		//	}
-		//}()
-		//// log信息重定向到平面文件
-		//multiWriter := io.MultiWriter(os.Stdout, f)
-		//log.SetOutput(multiWriter)
+		logDir, _ := filepath.Abs(CreateDateDir(""))
+		f, err := os.OpenFile(logDir+"/"+"run.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer func() {
+			if err := f.Close(); err != nil {
+				log.Fatal(err) // 或设置到函数返回值中
+			}
+		}()
+		// log信息重定向到平面文件
+		multiWriter := io.MultiWriter(os.Stdout, f)
+		log.SetOutput(multiWriter)
 		// 实例初始化，调用接口中创建目标表的方法
 		var db Database
 		start := time.Now()
@@ -78,7 +77,7 @@ var createTableCmd = &cobra.Command{
 		// 这里等待上面所有迁移数据的goroutine协程任务完成才会接着运行下面的主程序，如果这里不wait，上面还在迁移行数据的goroutine会被强制中断
 		wg2.Wait()
 		cost := time.Since(start)
-		log.Info("Table structure synced from MySQL to PolarDB ,Source Table Total ", tableCount, " Failed Total ", strconv.Itoa(failedCount))
+		log.Info("Table structure synced finish,Source Table Total ", tableCount, " Failed Total ", strconv.Itoa(failedCount))
 		fmt.Println("Table Create finish elapsed time ", cost)
 	},
 }
@@ -92,20 +91,20 @@ var onlyDataCmd = &cobra.Command{
 		connStr := getConn()
 		// 创建运行日志目录
 		logDir, _ := filepath.Abs(CreateDateDir(""))
-		//// 输出调用文件以及方法位置
-		//log.SetReportCaller(true)
-		//f, err := os.OpenFile(logDir+"/"+"run.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
-		//if err != nil {
-		//	log.Fatal(err)
-		//}
-		//defer func() {
-		//	if err := f.Close(); err != nil {
-		//		log.Fatal(err)
-		//	}
-		//}()
-		//// log信息重定向到平面文件
-		//multiWriter := io.MultiWriter(os.Stdout, f)
-		//log.SetOutput(multiWriter)
+		// 输出调用文件以及方法位置
+		log.SetReportCaller(true)
+		f, err := os.OpenFile(logDir+"/"+"run.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer func() {
+			if err := f.Close(); err != nil {
+				log.Fatal(err)
+			}
+		}()
+		// log信息重定向到平面文件
+		multiWriter := io.MultiWriter(os.Stdout, f)
+		log.SetOutput(multiWriter)
 		start := time.Now()
 		// map结构，表名以及该表用来迁移查询源库的语句
 		var tableMap map[string][]string
@@ -114,21 +113,13 @@ var onlyDataCmd = &cobra.Command{
 		log.Info("running SourceDB check connect")
 		// 生成源库数据库连接
 		PrepareSrc(connStr)
-		defer func(srcDb *sql.DB) {
-			if err := srcDb.Close(); err != nil {
-				log.Fatal(err)
-			}
-		}(srcDb)
+		defer srcDb.Close()
 		// 每页的分页记录数,仅全库迁移时有效
 		pageSize := viper.GetInt("pageSize")
 		log.Info("running TargetDB check connect")
 		// 生成目标库的数据库连接
 		PrepareDest(connStr)
-		defer func(destDb *sql.DB) {
-			if err := destDb.Close(); err != nil {
-				log.Fatal(err)
-			}
-		}(destDb)
+		defer destDb.Close()
 		// 以下是迁移数据前的准备工作，获取要迁移的表名以及该表查询源库的sql语句(如果有主键生成该表的分页查询切片集合，没有主键的统一是全表查询sql)
 		if selFromYml { // 如果用了-s选项，从配置文件中获取表名以及sql语句
 			tableMap = viper.GetStringMapStringSlice("tables")

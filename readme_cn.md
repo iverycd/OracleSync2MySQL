@@ -241,6 +241,11 @@ OracleSync2MySQL.exe  --config example.yml onlyData -s
 ```
 
 ## change history
+### v0.1.0
+2024-03-29
+修复分页查询遇到别名冲突问题
+
+
 ### v0.0.9
 2023-11-27
 -s自定义迁移的时候，读取配置文件中的表名并统一转为大小

@@ -189,16 +189,12 @@ func StrVal(value interface{}) string {
 }
 
 func cleanDBconn() {
-	// 遍历正在执行的客户端，使用kill query 命令kill所有查询id
+	// 遍历正在执行的客户端，使用kill query 命令kill所有查询id,避免目标数据库仍在执行额外sql
 	rows, err := destDb.Query("select id from information_schema.PROCESSLIST where info like '/* goapp%';")
 	if err != nil {
 		log.Error(err)
 	}
-	defer func(rows *sql.Rows) {
-		if err := rows.Close(); err != nil {
-			log.Fatal(err)
-		}
-	}(rows)
+	defer rows.Close()
 	for rows.Next() {
 		var id string
 		err = rows.Scan(&id)

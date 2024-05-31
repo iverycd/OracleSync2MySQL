@@ -1,5 +1,6 @@
 package connect
 
+// DbConnStr related with config.yml
 type DbConnStr struct {
 	SrcHost      string
 	SrcUserName  string

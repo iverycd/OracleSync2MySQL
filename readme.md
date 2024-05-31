@@ -253,6 +253,11 @@ OracleSync2MySQL.exe  --config example.yml onlyData -s
 ```
 
 ## change history
+### v0.1.0
+2024-03-29
+fix some error
+
+
 ### v0.0.9
 2023-11-27
 fix -s mode with upper table name
