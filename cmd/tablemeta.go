@@ -15,6 +15,7 @@ var failedCount int
 
 type Database interface {
 	// TableCreate (logDir string, tableMap map[string][]string) (result []string) 单线程
+	TableCheck(logDir string, tblName string) string //检查目标表是否存在
 	TableCreate(logDir string, tblName string, ch chan struct{})
 	IdxCreate(logDir string, tableName string, ch chan struct{}, id int)
 	SeqCreate(logDir string) (ret []string)
@@ -47,6 +48,16 @@ type Table struct {
 	dropSeqSql             string
 	destIdxSql             string
 	viewSql                string
+}
+
+func (tb *Table) TableCheck(logDir string, tblName string) string {
+	checkSql := fmt.Sprintf("SHOW TABLES LIKE '%s'", tblName)
+	var result string
+	err := destDb.QueryRow(checkSql).Scan(&result)
+	if err != nil {
+		log.Error(err)
+	}
+	return result
 }
 
 func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
@@ -148,7 +159,9 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 			newTable.destType = "datetime"
 		case "CLOB", "NCLOB", "LONG":
 			newTable.destType = "longtext"
-		case "BLOB", "RAW", "LONG RAW":
+		case "BLOB":
+			newTable.destType = "longtext"
+		case "RAW", "LONG RAW":
 			newTable.destType = "longblob"
 		// 其余类型，源库使用什么类型，目标库就使用什么类型
 		default:
