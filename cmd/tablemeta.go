@@ -405,9 +405,9 @@ func (tb *Table) ViewCreate(logDir string) (ret []string) {
 		dbRet = strings.ReplaceAll(dbRet, "--", "-- -- ")
 		dbRet = strings.ReplaceAll(dbRet, "\"", "`")
 		dbRet = strings.ReplaceAll(dbRet, "NVL(", "IFNULL(")
-		dbRet = strings.ReplaceAll(dbRet, "unistr('\0030')", "0")
-		dbRet = strings.ReplaceAll(dbRet, "unistr('\0031')", "1")
-		dbRet = strings.ReplaceAll(dbRet, "unistr('\0033')", "3")
+		dbRet = strings.ReplaceAll(dbRet, "UNISTR('\0030')", "0")
+		dbRet = strings.ReplaceAll(dbRet, "UNISTR('\0031')", "1")
+		dbRet = strings.ReplaceAll(dbRet, "UNISTR('\0033')", "3")
 		if len(viewName) > 0 {
 			sqlStr := "create or replace view " + viewName + " as " + dbRet
 			log.Info("[", idx, "] create view ", viewName)

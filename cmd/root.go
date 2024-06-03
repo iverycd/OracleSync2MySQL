@@ -434,7 +434,7 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 				stmt, err := txn.Prepare(insertSql) //prepare里的方法CopyIn只是把copy语句拼接好并返回，并非直接执行copy
 				if err != nil {
 					log.Error("txn.Prepare(insertSql) failed table[", tableName, "] ", err)
-					LogError(logDir, "errorTableData ", tableName, err)
+					LogError(logDir, "errorTableData ", insertSql, err)
 					//responseChannel <- fmt.Sprintf("data error %s", tableName)
 					<-ch // 通道向外发送数据
 					return
@@ -481,7 +481,7 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 		stmt, err := txn.Prepare(insertSql) //prepare里的方法CopyIn只是把copy语句拼接好并返回，并非直接执行copy
 		if err != nil {
 			log.Error("txn.Prepare(insertSql) failed table[", tableName, "] ", err)
-			LogError(logDir, "errorTableData ", tableName, err)
+			LogError(logDir, "errorTableData ", insertSql, err)
 			//responseChannel <- fmt.Sprintf("data error %s", tableName)
 			<-ch // 通道向外发送数据
 			return
