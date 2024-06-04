@@ -129,6 +129,28 @@ func LogError(logDir string, logName string, strContent string, errInfo error) {
 	}
 }
 
+func LogOutput(logDir string, logName string, strContent string) {
+	f, errFile := os.OpenFile(logDir+"/"+logName+".log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
+	if errFile != nil {
+		log.Fatal(errFile)
+	}
+	defer func() {
+		if errFile := f.Close(); errFile != nil {
+			log.Fatal(errFile) // 或设置到函数返回值中
+		}
+	}()
+	// create new buffer
+	buffer := bufio.NewWriter(f)
+	_, errFile = buffer.WriteString(strContent + "\n")
+	if errFile != nil {
+		log.Fatal(errFile)
+	}
+	// flush buffered data to the file
+	if errFile := buffer.Flush(); errFile != nil {
+		log.Fatal(errFile)
+	}
+}
+
 // StrVal
 // 获取变量的字符串值，目前用于interface类型转成字符串类型
 // 浮点型 3.0将会转换成字符串3, "3"

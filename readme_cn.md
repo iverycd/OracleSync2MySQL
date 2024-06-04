@@ -240,7 +240,32 @@ OracleSync2MySQL.exe  --config 配置文件 onlyData -s
 OracleSync2MySQL.exe  --config example.yml onlyData -s
 ```
 
+### 3.7 输出建库脚本
+
+不迁移任何数据，仅转储DDL语句，表创建、索引、自增列、视图等对象ddl语句输出到log文件下的createSql.log
+
+OracleSync2MySQL.exe  --config 配置文件 -m
+
+```
+示例
+OracleSync2MySQL.exe  --config example.yml -m
+```
+
 ## change history
+### v0.1.3
+2024-06-04
+修复tablemeta中视图批量替换的问题，新增-m模式，仅输出创建数据库对象的脚本文件到createSql.log文件，不会迁移任何对象
+
+
+### v0.1.2
+2024-05-30
+修复默认值缺失的问题
+
+### v0.1.1
+2024-05-14
+修复注释没有迁移的问题
+
+
 ### v0.1.0
 2024-03-29
 修复分页查询遇到别名冲突问题

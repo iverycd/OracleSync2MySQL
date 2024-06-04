@@ -84,7 +84,7 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 		}
 		// 判断colDefaultValue的长度，如果len大于0说明就是有非null的默认值，如果len为0说明在源库的默认值就是null
 		if len([]rune(colDefaultValue.String)) > 0 {
-			newTable.columnDefault = colDefaultValue.String
+			newTable.columnDefault = strings.ReplaceAll(colDefaultValue.String, "\n", "")
 		} else {
 			newTable.columnDefault = "null"
 		}
@@ -120,6 +120,8 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 				matches := re.FindAllString(newTable.dataType, -1)
 				if matches[0] == "TIMESTAMP" { //timestamp类型，才需要加精度值
 					newTable.destDefault = "default current_timestamp(" + strconv.Itoa(newTable.numericScale) + ")"
+				} else {
+					newTable.destDefault = "default current_timestamp"
 				}
 			} else { // 其余默认值类型无需使用单引号包围
 				newTable.destDefault = fmt.Sprintf("default %s", newTable.columnDefault)
@@ -166,17 +168,21 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 		}
 	}
 	//fmt.Println(createTblSql) // 打印创建表语句
-	// 创建前先删除目标表
-	dropDestTbl := "drop table if exists " + fmt.Sprintf("`") + tblName + fmt.Sprintf("`") + " cascade"
-	if _, err = destDb.Exec(dropDestTbl); err != nil {
-		log.Error("drop table ", tblName, " failed ", err)
-	}
-	// 创建表结构
-	log.Info(fmt.Sprintf("%v Table total %s create table %s", time.Now().Format("2006-01-02 15:04:05.000000"), strconv.Itoa(tableCount), tblName))
-	if _, err = destDb.Exec(createTblSql); err != nil {
-		log.Error("table ", tblName, " create failed  ", err)
-		LogError(logDir, "tableCreateFailed", createTblSql, err)
-		failedCount += 1
+	LogOutput(logDir, "createSql", createTblSql+";")
+	if !metaData {
+		// 创建前先删除目标表
+		dropDestTbl := "drop table if exists " + fmt.Sprintf("`") + tblName + fmt.Sprintf("`") + " cascade"
+		if _, err = destDb.Exec(dropDestTbl); err != nil {
+			log.Error("drop table ", tblName, " failed ", err)
+		}
+		// 创建表结构
+		log.Info(fmt.Sprintf("%v Table total %s create table %s", time.Now().Format("2006-01-02 15:04:05.000000"), strconv.Itoa(tableCount), tblName))
+
+		if _, err = destDb.Exec(createTblSql); err != nil {
+			log.Error("table ", tblName, " create failed  ", err)
+			LogError(logDir, "tableCreateFailed", createTblSql, err)
+			failedCount += 1
+		}
 	}
 	<-ch
 }
@@ -197,12 +203,15 @@ func (tb *Table) IdxCreate(logDir string, tableName string, ch chan struct{}, id
 		if err := rows.Scan(&destIdxSql); err != nil {
 			log.Error(err)
 		}
+		LogOutput(logDir, "createSql", destIdxSql)
 		destIdxSql = "/* goapp */" + destIdxSql
 		// 创建目标索引，主键、其余约束
-		if _, err = destDb.Exec(destIdxSql); err != nil {
-			log.Error("index ", destIdxSql, " create index failed ", err)
-			LogError(logDir, "idxCreateFailed", destIdxSql, err)
-			failedCount += 1
+		if !metaData {
+			if _, err = destDb.Exec(destIdxSql); err != nil {
+				log.Error("index ", destIdxSql, " create index failed ", err)
+				LogError(logDir, "idxCreateFailed", destIdxSql, err)
+				failedCount += 1
+			}
 		}
 	}
 	if destIdxSql != "" {
@@ -244,18 +253,26 @@ func (tb *Table) SeqCreate(logDir string) (ret []string) {
 				// 创建目标数据库该表表的自增列索引
 				sqlAutoColIdx := "/* goapp */" + "create index ids_" + tableName + "_" + autoColName + "_" + strconv.Itoa(idx) + " on " + tableName + "(" + autoColName + ")"
 				log.Info("[", idx, "] create auto_increment for table ", tableName)
-				if _, err = destDb.Exec(sqlAutoColIdx); err != nil {
-					log.Error(sqlAutoColIdx, " create index autoCol failed ", err)
-					LogError(logDir, "AutoIdxCreateFailed", sqlAutoColIdx, err)
-					failedCount += 1
+				LogOutput(logDir, "createSql", sqlAutoColIdx+";")
+				if !metaData {
+					if _, err = destDb.Exec(sqlAutoColIdx); err != nil {
+						log.Error(sqlAutoColIdx, " create index autoCol failed ", err)
+						LogError(logDir, "AutoIdxCreateFailed", sqlAutoColIdx, err)
+						failedCount += 1
+					}
 				}
+
 				// 更改目标数据库该表的列属性为自增列
 				sqlModifyAuto := "/* goapp */" + "alter table " + tableName + " modify " + autoColName + " bigint auto_increment"
-				if _, err = destDb.Exec(sqlModifyAuto); err != nil {
-					log.Error(sqlModifyAuto, " failed ", err)
-					LogError(logDir, "alterTableFailed", sqlModifyAuto, err)
-					failedCount += 1
+				LogOutput(logDir, "createSql", sqlModifyAuto+";")
+				if !metaData {
+					if _, err = destDb.Exec(sqlModifyAuto); err != nil {
+						log.Error(sqlModifyAuto, " failed ", err)
+						LogError(logDir, "alterTableFailed", sqlModifyAuto, err)
+						failedCount += 1
+					}
 				}
+
 			}
 		}
 	}
@@ -283,10 +300,13 @@ func (tb *Table) FkCreate(logDir string) (ret []string) {
 		}
 		log.Info("[", idx, "] create foreign key for table ", tableName)
 		sqlStr = "/* goapp */" + sqlStr
-		if _, err = destDb.Exec(sqlStr); err != nil {
-			log.Error(sqlStr, " create foreign key failed ", err)
-			LogError(logDir, "FKCreateFailed", sqlStr, err)
-			failedCount += 1
+		LogOutput(logDir, "createSql", sqlStr)
+		if !metaData {
+			if _, err = destDb.Exec(sqlStr); err != nil {
+				log.Error(sqlStr, " create foreign key failed ", err)
+				LogError(logDir, "FKCreateFailed", sqlStr, err)
+				failedCount += 1
+			}
 		}
 	}
 	endTime := time.Now()
@@ -322,11 +342,14 @@ func (tb *Table) NormalIdx(logDir string) (ret []string) {
 				log.Error(err)
 			}
 			log.Info("[", idx, "] create normal index for table ", tableName)
+			LogOutput(logDir, "createSql", createSql+";")
 			createSql = "/* goapp */" + createSql
-			if _, err = destDb.Exec(createSql); err != nil {
-				log.Error(createSql, " create normal index failed ", err)
-				LogError(logDir, "NormalIdxCreateFailed", createSql, err)
-				failedCount += 1
+			if !metaData {
+				if _, err = destDb.Exec(createSql); err != nil {
+					log.Error(createSql, " create normal index failed ", err)
+					LogError(logDir, "NormalIdxCreateFailed", createSql, err)
+					failedCount += 1
+				}
 			}
 		}
 
@@ -355,10 +378,13 @@ func (tb *Table) CommentCreate(logDir string) (ret []string) {
 		}
 		if len(createSql) > 0 { // 如果有normal-index，就通过dbms_metadata获取该normal-index的DDL语句
 			log.Info("[", idx, "] create comment for table ", tableName)
-			if _, err = destDb.Exec(createSql); err != nil {
-				log.Error(createSql, " create comment failed ", err)
-				LogError(logDir, "CommentCreateFailed", createSql, err)
-				failedCount += 1
+			LogOutput(logDir, "createSql", createSql+";")
+			if !metaData {
+				if _, err = destDb.Exec(createSql); err != nil {
+					log.Error(createSql, " create comment failed ", err)
+					LogError(logDir, "CommentCreateFailed", createSql, err)
+					failedCount += 1
+				}
 			}
 		}
 
@@ -392,17 +418,21 @@ func (tb *Table) ViewCreate(logDir string) (ret []string) {
 		dbRet = strings.ReplaceAll(dbRet, "--", "-- -- ")
 		dbRet = strings.ReplaceAll(dbRet, "\"", "`")
 		dbRet = strings.ReplaceAll(dbRet, "NVL(", "IFNULL(")
-		dbRet = strings.ReplaceAll(dbRet, "unistr('\0030')", "0")
-		dbRet = strings.ReplaceAll(dbRet, "unistr('\0031')", "1")
-		dbRet = strings.ReplaceAll(dbRet, "unistr('\0033')", "3")
+		dbRet = strings.ReplaceAll(dbRet, "UNISTR('\0030')", "0")
+		dbRet = strings.ReplaceAll(dbRet, "UNISTR('\0031')", "1")
+		dbRet = strings.ReplaceAll(dbRet, "UNISTR('\0033')", "3")
 		if len(viewName) > 0 {
 			sqlStr := "create or replace view " + viewName + " as " + dbRet
 			log.Info("[", idx, "] create view ", viewName)
-			if _, err = destDb.Exec(sqlStr); err != nil {
-				//log.Error(sqlStr, " create view failed ", err)
-				LogError(logDir, "ViewCreateFailed", sqlStr, err)
-				failedCount += 1
+			LogOutput(logDir, "createSql", sqlStr+";")
+			if !metaData {
+				if _, err = destDb.Exec(sqlStr); err != nil {
+					//log.Error(sqlStr, " create view failed ", err)
+					LogError(logDir, "ViewCreateFailed", sqlStr, err)
+					failedCount += 1
+				}
 			}
+
 		}
 	}
 	endTime := time.Now()

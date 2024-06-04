@@ -27,6 +27,7 @@ import (
 var log = logrus.New()
 var cfgFile string
 var selFromYml bool
+var metaData bool
 
 var wg sync.WaitGroup
 var wg2 sync.WaitGroup
@@ -114,22 +115,24 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	}
 	//遍历tableMap，先遍历表，再遍历该表的sql切片集合
 	migDataStart := time.Now()
-	for tableName, sqlFullSplit := range tableMap { //获取单个表名
-		colName, colType, tableNotExist := preMigData(tableName, sqlFullSplit) //获取单表的列名，列字段类型
-		if !tableNotExist {                                                    //目标表存在就执行数据迁移
-			// 遍历该表的sql切片(多个分页查询或者全表查询sql)
-			for index, sqlSplitSql := range sqlFullSplit {
-				log.Info("Table ", tableName, " total task ", len(sqlFullSplit))
-				ch <- struct{}{} //在没有被接收的情况下，至多发送n个消息到通道则被阻塞，若缓存区满，则阻塞，这里相当于占位置排队
-				wg.Add(1)        // 每运行一个goroutine等待组加1
-				go runMigration(logDir, index, tableName, sqlSplitSql, ch, colName, colType)
+	if !metaData {
+		for tableName, sqlFullSplit := range tableMap { //获取单个表名
+			colName, colType, tableNotExist := preMigData(tableName, sqlFullSplit) //获取单表的列名，列字段类型
+			if !tableNotExist {                                                    //目标表存在就执行数据迁移
+				// 遍历该表的sql切片(多个分页查询或者全表查询sql)
+				for index, sqlSplitSql := range sqlFullSplit {
+					log.Info("Table ", tableName, " total task ", len(sqlFullSplit))
+					ch <- struct{}{} //在没有被接收的情况下，至多发送n个消息到通道则被阻塞，若缓存区满，则阻塞，这里相当于占位置排队
+					wg.Add(1)        // 每运行一个goroutine等待组加1
+					go runMigration(logDir, index, tableName, sqlSplitSql, ch, colName, colType)
+				}
+			} else { //目标表不存在就往通道写1
+				log.Info("table not exists ", tableName)
 			}
-		} else { //目标表不存在就往通道写1
-			log.Info("table not exists ", tableName)
 		}
+		// 这里等待上面所有迁移数据的goroutine协程任务完成才会接着运行下面的主程序，如果这里不wait，上面还在迁移行数据的goroutine会被强制中断
+		wg.Wait()
 	}
-	// 这里等待上面所有迁移数据的goroutine协程任务完成才会接着运行下面的主程序，如果这里不wait，上面还在迁移行数据的goroutine会被强制中断
-	wg.Wait()
 	// 单独计算迁移表行数据的耗时
 	migDataEnd := time.Now()
 	migCost := migDataEnd.Sub(migDataStart)
@@ -534,6 +537,7 @@ func init() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.example.yaml)")
 	rootCmd.PersistentFlags().BoolVarP(&selFromYml, "selFromYml", "s", false, "select from yml true")
+	rootCmd.PersistentFlags().BoolVarP(&metaData, "metaData", "m", false, "only output create meta script true")
 	//rootCmd.PersistentFlags().BoolVarP(&tableOnly, "tableOnly", "t", false, "only create table true")
 }
 
