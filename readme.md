@@ -252,7 +252,31 @@ e.g.
 OracleSync2MySQL.exe  --config example.yml onlyData -s
 ```
 
+### 7 output create ddl
+
+Do not migrate any data, only dump DDL statements. Output DDL statements for table creation, indexes, auto increment columns, views, and other objects to createSql.log in the log file
+
+OracleSync2MySQL.exe  --config file.yml -m
+
+```
+e.g.
+OracleSync2MySQL.exe  --config example.yml -m
+```
+
 ## change history
+### v0.1.3
+2024-06-04
+fix tablemeta view problem,add -m mode only output ddl script to plat file
+
+
+### v0.1.2
+2024-05-30
+fix missing default value
+
+### v0.1.1
+2024-05-14
+add column comment
+
 ### v0.1.0
 2024-03-29
 fix some error
