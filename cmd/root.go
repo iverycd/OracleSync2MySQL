@@ -324,6 +324,10 @@ func prepareSqlStr(tableName string, pageSize int) (sqlList []string) {
 		log.Fatal(sql2, " exec failed ", err)
 		return
 	}
+	if totalPageNum == 1 {
+		sqlList = append(sqlList, fmt.Sprintf("SELECT %s FROM \"%s\"", colNameFull, tableName))
+		return sqlList
+	}
 	// 以下生成分页查询语句
 	for i := 0; i < totalPageNum; i++ { // 使用小于而不是小于等于，否则会多生成一条分页查询边界外的sql，即此sql查询源表没有数据，也会导致后面迁移数据有多个无用的goroutine
 		curStartPage := i + 1
