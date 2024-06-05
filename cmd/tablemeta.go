@@ -15,7 +15,6 @@ var failedCount int
 
 type Database interface {
 	// TableCreate (logDir string, tableMap map[string][]string) (result []string) 单线程
-	TableCheck(logDir string, tblName string) string //检查目标表是否存在
 	TableCreate(logDir string, tblName string, ch chan struct{})
 	IdxCreate(logDir string, tableName string, ch chan struct{}, id int)
 	SeqCreate(logDir string) (ret []string)
@@ -48,16 +47,6 @@ type Table struct {
 	dropSeqSql             string
 	destIdxSql             string
 	viewSql                string
-}
-
-func (tb *Table) TableCheck(logDir string, tblName string) string {
-	checkSql := fmt.Sprintf("SHOW TABLES LIKE '%s'", tblName)
-	var result string
-	err := destDb.QueryRow(checkSql).Scan(&result)
-	if err != nil {
-		log.Error(err)
-	}
-	return result
 }
 
 func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
@@ -161,9 +150,7 @@ func (tb *Table) TableCreate(logDir string, tblName string, ch chan struct{}) {
 			newTable.destType = "datetime"
 		case "CLOB", "NCLOB", "LONG":
 			newTable.destType = "longtext"
-		case "BLOB":
-			newTable.destType = "longtext"
-		case "RAW", "LONG RAW":
+		case "BLOB", "RAW", "LONG RAW":
 			newTable.destType = "longblob"
 		// 其余类型，源库使用什么类型，目标库就使用什么类型
 		default:
@@ -217,7 +204,7 @@ func (tb *Table) IdxCreate(logDir string, tableName string, ch chan struct{}, id
 			log.Error(err)
 		}
 		LogOutput(logDir, "createSql", destIdxSql)
-		destIdxSql = "/* goapp */" + destIdxSql
+		destIdxSql = "/* goapp idx */" + destIdxSql
 		// 创建目标索引，主键、其余约束
 		if !metaData {
 			if _, err = destDb.Exec(destIdxSql); err != nil {
@@ -264,7 +251,7 @@ func (tb *Table) SeqCreate(logDir string) (ret []string) {
 			if len(match) == 2 {
 				autoColName := match[1]
 				// 创建目标数据库该表表的自增列索引
-				sqlAutoColIdx := "/* goapp */" + "create index ids_" + tableName + "_" + autoColName + "_" + strconv.Itoa(idx) + " on " + tableName + "(" + autoColName + ")"
+				sqlAutoColIdx := "/* goapp seq idx */" + "create index ids_" + tableName + "_" + autoColName + "_" + strconv.Itoa(idx) + " on " + tableName + "(" + autoColName + ")"
 				log.Info("[", idx, "] create auto_increment for table ", tableName)
 				LogOutput(logDir, "createSql", sqlAutoColIdx+";")
 				if !metaData {
@@ -276,7 +263,7 @@ func (tb *Table) SeqCreate(logDir string) (ret []string) {
 				}
 
 				// 更改目标数据库该表的列属性为自增列
-				sqlModifyAuto := "/* goapp */" + "alter table " + tableName + " modify " + autoColName + " bigint auto_increment"
+				sqlModifyAuto := "/* goapp seq auto */" + "alter table " + tableName + " modify " + autoColName + " bigint auto_increment"
 				LogOutput(logDir, "createSql", sqlModifyAuto+";")
 				if !metaData {
 					if _, err = destDb.Exec(sqlModifyAuto); err != nil {
@@ -312,7 +299,7 @@ func (tb *Table) FkCreate(logDir string) (ret []string) {
 			log.Error(err)
 		}
 		log.Info("[", idx, "] create foreign key for table ", tableName)
-		sqlStr = "/* goapp */" + sqlStr
+		sqlStr = "/* goapp fk */" + sqlStr
 		LogOutput(logDir, "createSql", sqlStr)
 		if !metaData {
 			if _, err = destDb.Exec(sqlStr); err != nil {
@@ -356,7 +343,7 @@ func (tb *Table) NormalIdx(logDir string) (ret []string) {
 			}
 			log.Info("[", idx, "] create normal index for table ", tableName)
 			LogOutput(logDir, "createSql", createSql+";")
-			createSql = "/* goapp */" + createSql
+			createSql = "/* goapp normal idx */" + createSql
 			if !metaData {
 				if _, err = destDb.Exec(createSql); err != nil {
 					log.Error(createSql, " create normal index failed ", err)

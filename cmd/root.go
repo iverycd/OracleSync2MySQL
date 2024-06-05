@@ -317,7 +317,7 @@ func prepareSqlStr(tableName string, pageSize int) (sqlList []string) {
 		return
 	}
 	// 根据当前表总数以及每页的页记录大小pageSize，自动计算需要多少页记录数，即总共循环多少次，如果表没有数据，后面判断下切片长度再做处理
-	sql2 := "/* goapp */" + "select ceil(count(*)/" + strconv.Itoa(pageSize) + ") as total_page_num from " + "\"" + tableName + "\""
+	sql2 := "/* goapp count */" + "select ceil(count(*)/" + strconv.Itoa(pageSize) + ") as total_page_num from " + "\"" + tableName + "\""
 	//以下是直接使用QueryRow
 	err = srcDb.QueryRow(sql2).Scan(&totalPageNum)
 	if err != nil {
@@ -345,7 +345,7 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 	log.Info(fmt.Sprintf("%v Taskid[%d] Processing TableData %v ", time.Now().Format("2006-01-02 15:04:05.000000"), startPage, tableName))
 	start := time.Now()
 	// 直接查询,即查询全表或者分页查询(SELECT t.* FROM (SELECT id FROM test  ORDER BY id LIMIT ?, ?) temp LEFT JOIN test t ON temp.id = t.id;)
-	sqlStr = "/* goapp */" + sqlStr
+	sqlStr = "/* goapp query */" + sqlStr
 	// 查询源库的sql
 	rows, err := srcDb.Query(sqlStr) //传入参数之后执行
 	defer rows.Close()
@@ -437,7 +437,7 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 				stmt, err := txn.Prepare(insertSql) //prepare里的方法CopyIn只是把copy语句拼接好并返回，并非直接执行copy
 				if err != nil {
 					log.Error("txn.Prepare(insertSql) failed table[", tableName, "] ", err)
-					LogError(logDir, "errorTableData ", insertSql, err)
+					LogError(logDir, "errorTableData ", tableName, err)
 					//responseChannel <- fmt.Sprintf("data error %s", tableName)
 					<-ch // 通道向外发送数据
 					return
@@ -484,7 +484,7 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 		stmt, err := txn.Prepare(insertSql) //prepare里的方法CopyIn只是把copy语句拼接好并返回，并非直接执行copy
 		if err != nil {
 			log.Error("txn.Prepare(insertSql) failed table[", tableName, "] ", err)
-			LogError(logDir, "errorTableData ", insertSql, err)
+			LogError(logDir, "errorTableData ", tableName, err)
 			//responseChannel <- fmt.Sprintf("data error %s", tableName)
 			<-ch // 通道向外发送数据
 			return
