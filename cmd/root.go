@@ -1,22 +1,21 @@
 package cmd
 
 import (
+	"OracleSync2MySQL/pkg/sirupsen/logrus"
 	"bytes"
 	"database/sql"
 	"fmt"
 	"github.com/mitchellh/go-homedir"
-	"io"
 	"math"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	//"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"OracleSync2MySQL/connect"
@@ -24,7 +23,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-var log = logrus.New()
+var log, logDir = logrus.New()
 var cfgFile string
 var selFromYml bool
 var metaData bool
@@ -49,22 +48,6 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	exitChan := make(chan os.Signal)
 	signal.Notify(exitChan, os.Interrupt, os.Kill, syscall.SIGTERM)
 	go exitHandle(exitChan)
-	// 创建运行日志目录
-	logDir, _ := filepath.Abs(CreateDateDir(""))
-	// 输出调用文件以及方法位置
-	log.SetReportCaller(true)
-	f, err := os.OpenFile(logDir+"/"+"run.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() {
-		if err := f.Close(); err != nil {
-			log.Fatal(err)
-		}
-	}()
-	// log信息重定向到平面文件
-	multiWriter := io.MultiWriter(os.Stdout, f)
-	log.SetOutput(multiWriter)
 	start := time.Now()
 	// map结构，表名以及该表用来迁移查询源库的语句
 	var tableMap map[string][]string
