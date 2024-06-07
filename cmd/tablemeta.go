@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"regexp"
@@ -224,7 +225,20 @@ func (tb *Table) SeqCreate(logDir string) (ret []string) {
 	startTime := time.Now()
 	failedCount = 0
 	var dbRet, tableName string
-	rows, err := srcDb.Query("select table_name,trigger_body from user_triggers where upper(trigger_type) ='BEFORE EACH ROW'")
+	srcTableSql := "select table_name,trigger_body from user_triggers where upper(trigger_type) ='BEFORE EACH ROW' %s union select table_name,trigger_body from dba_triggers where upper(trigger_type) ='BEFORE EACH ROW' %s"
+	buffer := bytes.NewBufferString(" ")
+	if len(excludeTab) > 0 {
+		buffer.WriteString(" and table_name not in ( ")
+		for index, tabName := range excludeTab {
+			if index < len(excludeTab)-1 {
+				buffer.WriteString("'" + tabName + "'" + ",")
+			} else {
+				buffer.WriteString("'" + tabName + "'" + ")")
+			}
+		}
+	}
+	srcTableSql = fmt.Sprintf(srcTableSql, buffer.String(), buffer.String())
+	rows, err := srcDb.Query(srcTableSql)
 	if err != nil {
 		log.Error(err)
 	}
@@ -286,7 +300,22 @@ func (tb *Table) FkCreate(logDir string) (ret []string) {
 	startTime := time.Now()
 	failedCount = 0
 	var tableName, sqlStr string
-	rows, err := srcDb.Query("SELECT B.TABLE_NAME,'ALTER TABLE ' || B.TABLE_NAME || ' ADD CONSTRAINT ' ||\n       B.CONSTRAINT_NAME || ' FOREIGN KEY (' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM USER_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.CONSTRAINT_NAME) || ') REFERENCES ' ||\n       (SELECT B1.table_name FROM USER_CONSTRAINTS B1\n        WHERE B1.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || '(' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM USER_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || ');'\nFROM USER_CONSTRAINTS B\nWHERE B.CONSTRAINT_TYPE = 'R' ")
+	srcTableSql := "SELECT B.TABLE_NAME,'ALTER TABLE ' || B.TABLE_NAME || ' ADD CONSTRAINT ' ||\n       B.CONSTRAINT_NAME || ' FOREIGN KEY (' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM USER_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.CONSTRAINT_NAME) || ') REFERENCES ' ||\n       (SELECT B1.table_name FROM USER_CONSTRAINTS B1\n        WHERE B1.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || '(' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM USER_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || ');'\nFROM USER_CONSTRAINTS B\nWHERE B.CONSTRAINT_TYPE = 'R' %s"
+	srcTableSql = srcTableSql + "union SELECT B.TABLE_NAME,'ALTER TABLE ' || B.TABLE_NAME || ' ADD CONSTRAINT ' ||\n       B.CONSTRAINT_NAME || ' FOREIGN KEY (' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM DBA_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.CONSTRAINT_NAME) || ') REFERENCES ' ||\n       (SELECT B1.table_name FROM DBA_CONSTRAINTS B1\n        WHERE B1.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || '(' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM DBA_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || ');'\nFROM DBA_CONSTRAINTS B\nWHERE B.CONSTRAINT_TYPE = 'R' %s"
+	buffer := bytes.NewBufferString(" ")
+	if len(excludeTab) > 0 {
+		buffer.WriteString(" and B.TABLE_NAME not in ( ")
+		for index, tabName := range excludeTab {
+			if index < len(excludeTab)-1 {
+				buffer.WriteString("'" + tabName + "'" + ",")
+			} else {
+				buffer.WriteString("'" + tabName + "'" + ")")
+			}
+		}
+	}
+	srcTableSql = fmt.Sprintf(srcTableSql, buffer.String(), buffer.String())
+	rows, err := srcDb.Query(srcTableSql)
+
 	if err != nil {
 		log.Error(err)
 	}

@@ -32,7 +32,7 @@ var createTableCmd = &cobra.Command{
 		// 每页的分页记录数,仅全库迁移时有效
 		pageSize := viper.GetInt("pageSize")
 		// 从配置文件中获取需要排除的表
-		excludeTab := viper.GetStringSlice("exclude")
+		excludeTab = viper.GetStringSlice("exclude")
 		PrepareSrc(connStr)
 		PrepareDest(connStr)
 		var tableMap map[string][]string
@@ -76,7 +76,7 @@ var onlyDataCmd = &cobra.Command{
 		// map结构，表名以及该表用来迁移查询源库的语句
 		var tableMap map[string][]string
 		// 从配置文件中获取需要排除的表
-		excludeTab := viper.GetStringSlice("exclude")
+		excludeTab = viper.GetStringSlice("exclude")
 		log.Info("running SourceDB check connect")
 		// 生成源库数据库连接
 		PrepareSrc(connStr)

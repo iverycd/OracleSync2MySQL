@@ -27,6 +27,7 @@ var log, logDir = logrus.New()
 var cfgFile string
 var selFromYml bool
 var metaData bool
+var excludeTab []string
 
 var wg sync.WaitGroup
 var wg2 sync.WaitGroup
@@ -52,7 +53,7 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	// map结构，表名以及该表用来迁移查询源库的语句
 	var tableMap map[string][]string
 	// 从配置文件中获取需要排除的表
-	excludeTab := viper.GetStringSlice("exclude")
+	excludeTab = viper.GetStringSlice("exclude")
 	log.Info("running SourceDB check connect")
 	// 生成源库数据库连接
 	PrepareSrc(connStr)
