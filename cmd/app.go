@@ -22,6 +22,7 @@ import (
 var srcDb *sql.DB
 var destDb *sql.DB
 var oracleConnStr godror.ConnectionParams
+var srcSchema string
 
 func getConn() (connStr *connect.DbConnStr) {
 	connStr = new(connect.DbConnStr)
@@ -30,6 +31,7 @@ func getConn() (connStr *connect.DbConnStr) {
 	connStr.SrcPassword = viper.GetString("src.password")
 	connStr.SrcDatabase = viper.GetString("src.database")
 	connStr.SrcPort = viper.GetInt("src.port")
+	connStr.SrcSchema = viper.GetString("src.schema")
 	connStr.DestHost = viper.GetString("dest.host")
 	connStr.DestPort = viper.GetInt("dest.port")
 	connStr.DestUserName = viper.GetString("dest.username")
@@ -46,6 +48,7 @@ func PrepareSrc(connStr *connect.DbConnStr) {
 	srcPassword := connStr.SrcPassword
 	srcDatabase := connStr.SrcDatabase
 	srcPort := connStr.SrcPort
+	srcSchema = connStr.SrcSchema
 	//srcConn := fmt.Sprintf("oracle://%s:%s@%s:%d/%s?LOB FETCH=POST", srcUserName, srcPassword, srcHost, srcPort, srcDatabase)
 	//fmt.Println(srcConn)
 	var err error
