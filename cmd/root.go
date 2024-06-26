@@ -1,22 +1,21 @@
 package cmd
 
 import (
+	"OracleSync2MySQL/pkg/sirupsen/logrus"
 	"bytes"
 	"database/sql"
 	"fmt"
 	"github.com/mitchellh/go-homedir"
-	"io"
 	"math"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	//"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"OracleSync2MySQL/connect"
@@ -24,10 +23,11 @@ import (
 	"github.com/spf13/viper"
 )
 
-var log = logrus.New()
+var log, logDir = logrus.New()
 var cfgFile string
 var selFromYml bool
 var metaData bool
+var excludeTab []string
 
 var wg sync.WaitGroup
 var wg2 sync.WaitGroup
@@ -49,27 +49,11 @@ func startDataTransfer(connStr *connect.DbConnStr) {
 	exitChan := make(chan os.Signal)
 	signal.Notify(exitChan, os.Interrupt, os.Kill, syscall.SIGTERM)
 	go exitHandle(exitChan)
-	// 创建运行日志目录
-	logDir, _ := filepath.Abs(CreateDateDir(""))
-	// 输出调用文件以及方法位置
-	log.SetReportCaller(true)
-	f, err := os.OpenFile(logDir+"/"+"run.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, os.ModePerm)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() {
-		if err := f.Close(); err != nil {
-			log.Fatal(err)
-		}
-	}()
-	// log信息重定向到平面文件
-	multiWriter := io.MultiWriter(os.Stdout, f)
-	log.SetOutput(multiWriter)
 	start := time.Now()
 	// map结构，表名以及该表用来迁移查询源库的语句
 	var tableMap map[string][]string
 	// 从配置文件中获取需要排除的表
-	excludeTab := viper.GetStringSlice("exclude")
+	excludeTab = viper.GetStringSlice("exclude")
 	log.Info("running SourceDB check connect")
 	// 生成源库数据库连接
 	PrepareSrc(connStr)
@@ -317,12 +301,16 @@ func prepareSqlStr(tableName string, pageSize int) (sqlList []string) {
 		return
 	}
 	// 根据当前表总数以及每页的页记录大小pageSize，自动计算需要多少页记录数，即总共循环多少次，如果表没有数据，后面判断下切片长度再做处理
-	sql2 := "/* goapp */" + "select ceil(count(*)/" + strconv.Itoa(pageSize) + ") as total_page_num from " + "\"" + tableName + "\""
+	sql2 := "/* goapp count */" + "select ceil(count(*)/" + strconv.Itoa(pageSize) + ") as total_page_num from " + "\"" + tableName + "\""
 	//以下是直接使用QueryRow
 	err = srcDb.QueryRow(sql2).Scan(&totalPageNum)
 	if err != nil {
 		log.Fatal(sql2, " exec failed ", err)
 		return
+	}
+	if totalPageNum == 1 {
+		sqlList = append(sqlList, fmt.Sprintf("SELECT %s FROM \"%s\"", colNameFull, tableName))
+		return sqlList
 	}
 	// 以下生成分页查询语句
 	for i := 0; i < totalPageNum; i++ { // 使用小于而不是小于等于，否则会多生成一条分页查询边界外的sql，即此sql查询源表没有数据，也会导致后面迁移数据有多个无用的goroutine
@@ -345,7 +333,7 @@ func runMigration(logDir string, startPage int, tableName string, sqlStr string,
 	log.Info(fmt.Sprintf("%v Taskid[%d] Processing TableData %v ", time.Now().Format("2006-01-02 15:04:05.000000"), startPage, tableName))
 	start := time.Now()
 	// 直接查询,即查询全表或者分页查询(SELECT t.* FROM (SELECT id FROM test  ORDER BY id LIMIT ?, ?) temp LEFT JOIN test t ON temp.id = t.id;)
-	sqlStr = "/* goapp */" + sqlStr
+	sqlStr = "/* goapp query */" + sqlStr
 	// 查询源库的sql
 	rows, err := srcDb.Query(sqlStr) //传入参数之后执行
 	defer rows.Close()

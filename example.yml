@@ -4,6 +4,7 @@ src:
   database: orcl
   username: admin
   password: oracle
+#  schema: test
 dest:
   host: 192.168.1.37
   port: 3306

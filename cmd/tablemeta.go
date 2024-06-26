@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"regexp"
@@ -204,7 +205,7 @@ func (tb *Table) IdxCreate(logDir string, tableName string, ch chan struct{}, id
 			log.Error(err)
 		}
 		LogOutput(logDir, "createSql", destIdxSql)
-		destIdxSql = "/* goapp */" + destIdxSql
+		destIdxSql = "/* goapp idx */" + destIdxSql
 		// 创建目标索引，主键、其余约束
 		if !metaData {
 			if _, err = destDb.Exec(destIdxSql); err != nil {
@@ -224,7 +225,20 @@ func (tb *Table) SeqCreate(logDir string) (ret []string) {
 	startTime := time.Now()
 	failedCount = 0
 	var dbRet, tableName string
-	rows, err := srcDb.Query("select table_name,trigger_body from user_triggers where upper(trigger_type) ='BEFORE EACH ROW'")
+	srcTableSql := "select table_name,trigger_body from user_triggers where upper(trigger_type) ='BEFORE EACH ROW' %s union select table_name,trigger_body from dba_triggers where upper(trigger_type) ='BEFORE EACH ROW' %s"
+	buffer := bytes.NewBufferString(" ")
+	if len(excludeTab) > 0 {
+		buffer.WriteString(" and table_name not in ( ")
+		for index, tabName := range excludeTab {
+			if index < len(excludeTab)-1 {
+				buffer.WriteString("'" + tabName + "'" + ",")
+			} else {
+				buffer.WriteString("'" + tabName + "'" + ")")
+			}
+		}
+	}
+	srcTableSql = fmt.Sprintf(srcTableSql, buffer.String(), buffer.String())
+	rows, err := srcDb.Query(srcTableSql)
 	if err != nil {
 		log.Error(err)
 	}
@@ -251,7 +265,7 @@ func (tb *Table) SeqCreate(logDir string) (ret []string) {
 			if len(match) == 2 {
 				autoColName := match[1]
 				// 创建目标数据库该表表的自增列索引
-				sqlAutoColIdx := "/* goapp */" + "create index ids_" + tableName + "_" + autoColName + "_" + strconv.Itoa(idx) + " on " + tableName + "(" + autoColName + ")"
+				sqlAutoColIdx := "/* goapp seq idx */" + "create index ids_" + tableName + "_" + autoColName + "_" + strconv.Itoa(idx) + " on " + tableName + "(" + autoColName + ")"
 				log.Info("[", idx, "] create auto_increment for table ", tableName)
 				LogOutput(logDir, "createSql", sqlAutoColIdx+";")
 				if !metaData {
@@ -263,7 +277,7 @@ func (tb *Table) SeqCreate(logDir string) (ret []string) {
 				}
 
 				// 更改目标数据库该表的列属性为自增列
-				sqlModifyAuto := "/* goapp */" + "alter table " + tableName + " modify " + autoColName + " bigint auto_increment"
+				sqlModifyAuto := "/* goapp seq auto */" + "alter table " + tableName + " modify " + autoColName + " bigint auto_increment"
 				LogOutput(logDir, "createSql", sqlModifyAuto+";")
 				if !metaData {
 					if _, err = destDb.Exec(sqlModifyAuto); err != nil {
@@ -286,7 +300,22 @@ func (tb *Table) FkCreate(logDir string) (ret []string) {
 	startTime := time.Now()
 	failedCount = 0
 	var tableName, sqlStr string
-	rows, err := srcDb.Query("SELECT B.TABLE_NAME,'ALTER TABLE ' || B.TABLE_NAME || ' ADD CONSTRAINT ' ||\n       B.CONSTRAINT_NAME || ' FOREIGN KEY (' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM USER_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.CONSTRAINT_NAME) || ') REFERENCES ' ||\n       (SELECT B1.table_name FROM USER_CONSTRAINTS B1\n        WHERE B1.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || '(' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM USER_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || ');'\nFROM USER_CONSTRAINTS B\nWHERE B.CONSTRAINT_TYPE = 'R' ")
+	srcTableSql := "SELECT B.TABLE_NAME,'ALTER TABLE ' || B.TABLE_NAME || ' ADD CONSTRAINT ' ||\n       B.CONSTRAINT_NAME || ' FOREIGN KEY (' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM USER_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.CONSTRAINT_NAME) || ') REFERENCES ' ||\n       (SELECT B1.table_name FROM USER_CONSTRAINTS B1\n        WHERE B1.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || '(' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM USER_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || ');'\nFROM USER_CONSTRAINTS B\nWHERE B.CONSTRAINT_TYPE = 'R' %s"
+	srcTableSql = srcTableSql + "union SELECT B.TABLE_NAME,'ALTER TABLE ' || B.TABLE_NAME || ' ADD CONSTRAINT ' ||\n       B.CONSTRAINT_NAME || ' FOREIGN KEY (' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM DBA_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.CONSTRAINT_NAME) || ') REFERENCES ' ||\n       (SELECT B1.table_name FROM DBA_CONSTRAINTS B1\n        WHERE B1.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || '(' ||\n       (SELECT listagg(A.COLUMN_NAME,',') within group(order by a.position)\n        FROM DBA_CONS_COLUMNS A\n        WHERE A.CONSTRAINT_NAME = B.R_CONSTRAINT_NAME) || ');'\nFROM DBA_CONSTRAINTS B\nWHERE B.CONSTRAINT_TYPE = 'R' %s"
+	buffer := bytes.NewBufferString(" ")
+	if len(excludeTab) > 0 {
+		buffer.WriteString(" and B.TABLE_NAME not in ( ")
+		for index, tabName := range excludeTab {
+			if index < len(excludeTab)-1 {
+				buffer.WriteString("'" + tabName + "'" + ",")
+			} else {
+				buffer.WriteString("'" + tabName + "'" + ")")
+			}
+		}
+	}
+	srcTableSql = fmt.Sprintf(srcTableSql, buffer.String(), buffer.String())
+	rows, err := srcDb.Query(srcTableSql)
+
 	if err != nil {
 		log.Error(err)
 	}
@@ -299,7 +328,7 @@ func (tb *Table) FkCreate(logDir string) (ret []string) {
 			log.Error(err)
 		}
 		log.Info("[", idx, "] create foreign key for table ", tableName)
-		sqlStr = "/* goapp */" + sqlStr
+		sqlStr = "/* goapp fk */" + sqlStr
 		LogOutput(logDir, "createSql", sqlStr)
 		if !metaData {
 			if _, err = destDb.Exec(sqlStr); err != nil {
@@ -343,7 +372,7 @@ func (tb *Table) NormalIdx(logDir string) (ret []string) {
 			}
 			log.Info("[", idx, "] create normal index for table ", tableName)
 			LogOutput(logDir, "createSql", createSql+";")
-			createSql = "/* goapp */" + createSql
+			createSql = "/* goapp normal idx */" + createSql
 			if !metaData {
 				if _, err = destDb.Exec(createSql); err != nil {
 					log.Error(createSql, " create normal index failed ", err)

@@ -7,6 +7,7 @@ type DbConnStr struct {
 	SrcPassword  string
 	SrcDatabase  string
 	SrcPort      int
+	SrcSchema    string
 	DestHost     string
 	DestPort     int
 	DestUserName string
